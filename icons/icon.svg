@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">GitLab reference number pin</title>
+  <rect x="4" y="4" width="120" height="120" rx="24" fill="#fc6d26"/>
+  <path fill="#171321" d="M37 24h13l-3 24h22l3-24h13l-3 24h20v13H80l-2 18h20v13H76l-3 24H60l3-24H41l-3 24H25l3-24H8V79h22l2-18H12V48h22l3-24Zm8 37-2 18h22l2-18H45Z"/>
+</svg>
