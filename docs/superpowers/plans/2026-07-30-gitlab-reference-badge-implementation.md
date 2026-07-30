@@ -6,7 +6,7 @@
 
 **Architecture:** 无构建步骤的内容脚本先通过纯函数解析当前 URL，再将隔离样式的 Shadow DOM 标签挂到页面根节点。内容脚本监听 GitLab/Turbo 导航事件、浏览器导航事件和 DOM 变化，在 URL 改变时更新或移除标签；所有行为仅发生在本地。
 
-**Tech Stack:** Manifest V3、原生 JavaScript、Shadow DOM、Node.js `node:test`、Chrome DevTools Protocol、`glab`。
+**Tech Stack:** Manifest V3、原生 JavaScript、Shadow DOM、Node.js `node:test`、WebDriver BiDi、Chrome DevTools Protocol、`glab`。
 
 ## Global Constraints
 
@@ -24,11 +24,13 @@
 ### Task 1: URL 解析器
 
 **Files:**
+
 - Create: `package.json`
 - Create: `tests/parser.test.js`
 - Create: `src/parser.js`
 
 **Interfaces:**
+
 - Produces: `globalThis.GitLabReferenceParser.parseGitLabReference(urlLike)`，返回 `{ kind: "issue" | "merge-request", iid: string } | null`。
 - Consumes: 浏览器或 Node 提供的标准 `URL`。
 
@@ -62,10 +64,12 @@ git commit -m "feat: parse GitLab issue and merge request URLs"
 ### Task 2: 固定标签与导航生命周期
 
 **Files:**
+
 - Create: `tests/content.test.js`
 - Create: `src/content.js`
 
 **Interfaces:**
+
 - Consumes: `globalThis.GitLabReferenceParser.parseGitLabReference(location.href)`。
 - Produces: 页面根节点下唯一的 `#gitlab-reference-badge-host`，其开放 Shadow DOM 中包含 `[data-reference-badge]`。
 - Produces: `globalThis.GitLabReferenceBadge` 测试接口，包含 `sync()` 与 `destroy()`。
@@ -104,6 +108,7 @@ git commit -m "feat: keep GitLab reference visible while navigating"
 ### Task 3: Manifest、图标与静态校验
 
 **Files:**
+
 - Create: `manifest.json`
 - Create: `icons/icon.svg`
 - Create: `icons/icon-16.png`
@@ -114,6 +119,7 @@ git commit -m "feat: keep GitLab reference visible while navigating"
 - Create: `tests/manifest.test.js`
 
 **Interfaces:**
+
 - Consumes: 按顺序加载 `src/parser.js`、`src/content.js`。
 - Produces: 可由 Chromium “加载已解压的扩展程序”读取的 Manifest V3 根目录。
 
@@ -151,24 +157,26 @@ git commit -m "feat: package the Chromium extension"
 ### Task 4: 真实 Chromium 验证与测试文档
 
 **Files:**
+
 - Create: `tests/browser.test.js`
 - Create: `docs/testing.md`
 - Create: `README.md`
 - Modify: `package.json`
 
 **Interfaces:**
-- Consumes: 本机 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 或 `CHROME_PATH`。
-- Produces: `npm run test:browser`，通过 Chrome DevTools Protocol 启动真实 Chromium、加载当前扩展并验证 DOM 行为。
+
+- Consumes: Chrome/Chromium 与同主版本 ChromeDriver，路径可分别通过 `CHROME_PATH`、`CHROMEDRIVER_PATH` 覆盖。
+- Produces: `npm run test:browser`，通过 ChromeDriver 创建 WebDriver 会话、以 WebDriver BiDi 安装当前扩展，再通过 Chrome DevTools Protocol 验证 DOM 和交互行为。
 
 - [ ] **Step 1: 写真实浏览器测试驱动程序**
 
-测试启动本地 HTTP fixture 和临时 Chrome profile，以 `--disable-extensions-except`、`--load-extension`、`--headless=new` 加载扩展。通过 CDP 验证初始 `Issue #123`、host 唯一、滚动后顶部坐标不变、固定定位、鼠标事件穿透、地址变成 MR 后显示 `MR !456`、离开详情页后节点消失。
+测试启动本地 HTTP fixture、ChromeDriver 和临时 Chrome profile，请求启用 WebDriver BiDi 的 WebDriver 会话，以 `webExtension.install` 安装当前未打包目录。随后通过 CDP 验证初始 `Issue #123`、host 唯一、滚动后顶部坐标不变、固定定位、鼠标事件穿透、地址变成 MR 后显示 `MR !456`、离开详情页后节点消失；结束时卸载扩展并清理全部进程和临时资源。
 
 - [ ] **Step 2: 运行真实浏览器测试并修复生产行为而非放宽断言**
 
 Run: `npm run test:browser`
 
-Expected: Chrome 150 启动成功，所有运行时断言 PASS；若平台禁止 headless 扩展，则保留同一断言并切换到可见临时窗口执行。
+Expected: Chrome for Testing 150 与配套 ChromeDriver 启动成功，BiDi 扩展安装及所有运行时断言 PASS。Chrome 137+ 品牌构建忽略自动化使用的 `--load-extension`，因此不再以该参数作为测试安装方式。
 
 - [ ] **Step 3: 编写 README**
 
@@ -187,18 +195,20 @@ Expected: 全部测试 PASS，浏览器场景 PASS，无空白错误。
 - [ ] **Step 6: 提交文档和浏览器验证**
 
 ```bash
-git add README.md docs/testing.md tests/browser.test.js package.json
+git add .markdownlint-cli2.jsonc README.md docs/testing.md docs/superpowers/plans/2026-07-30-gitlab-reference-badge-implementation.md tests/browser.test.js package.json
 git commit -m "test: verify extension in Chromium"
 ```
 
 ### Task 5: 内部 GitLab 仓库与最终审计
 
 **Files:**
+
 - Preserve: `docs/superpowers/specs/2026-07-29-gitlab-reference-badge-design.md`
 - Preserve: `docs/superpowers/plans/2026-07-30-gitlab-reference-badge-implementation.md`
 - Preserve: `docs/testing.md`
 
 **Interfaces:**
+
 - Consumes: 已授权主机 `git.tsintergy.com:8070` 的 `glab` 登录。
 - Produces: 内部可见项目 `lvwei/chrome-show-issue-and-mr-no` 和指向它的 `origin`。
 
