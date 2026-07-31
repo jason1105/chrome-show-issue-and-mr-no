@@ -52,7 +52,19 @@
       return null;
     }
 
+    const projectEndIndex = modernSeparatorIndex >= 0
+      ? modernSeparatorIndex
+      : resourceIndex;
+    let projectSegments;
+    try {
+      projectSegments = segments.slice(0, projectEndIndex).map(decodeURIComponent);
+    } catch {
+      return null;
+    }
+
     return {
+      origin: url.origin,
+      projectPath: projectSegments.join('/'),
       kind: RESOURCE_KINDS[segments[resourceIndex]],
       iid,
     };

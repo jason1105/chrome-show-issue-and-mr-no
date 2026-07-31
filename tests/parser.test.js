@@ -6,14 +6,24 @@ const { parseGitLabReference } = require('../src/parser.js');
 test('parses a modern GitLab.com issue URL', () => {
   assert.deepEqual(
     parseGitLabReference('https://gitlab.com/acme/platform/-/issues/123'),
-    { kind: 'issue', iid: '123' },
+    {
+      origin: 'https://gitlab.com',
+      projectPath: 'acme/platform',
+      kind: 'issue',
+      iid: '123',
+    },
   );
 });
 
 test('parses a modern self-hosted merge request URL over HTTP', () => {
   assert.deepEqual(
-    parseGitLabReference('http://git.tsintergy.com/group/project/-/merge_requests/456'),
-    { kind: 'merge-request', iid: '456' },
+    parseGitLabReference('http://git.tsintergy.com:8080/group/project/-/merge_requests/456'),
+    {
+      origin: 'http://git.tsintergy.com:8080',
+      projectPath: 'group/project',
+      kind: 'merge-request',
+      iid: '456',
+    },
   );
 });
 
@@ -22,29 +32,79 @@ test('parses HTTPS self-hosted URLs with nested groups and URL decorations', () 
     parseGitLabReference(
       'https://git.example.test/platform/frontend/web-app/-/issues/7?view=parallel#note_99',
     ),
-    { kind: 'issue', iid: '7' },
+    {
+      origin: 'https://git.example.test',
+      projectPath: 'platform/frontend/web-app',
+      kind: 'issue',
+      iid: '7',
+    },
+  );
+});
+
+test('decodes each project path segment exactly once', () => {
+  assert.deepEqual(
+    parseGitLabReference(
+      'https://git.example.test/platform/frontend/web%20app/-/issues/7',
+    ),
+    {
+      origin: 'https://git.example.test',
+      projectPath: 'platform/frontend/web app',
+      kind: 'issue',
+      iid: '7',
+    },
+  );
+  assert.deepEqual(
+    parseGitLabReference(
+      'https://git.example.test/platform/frontend/web%2520app/-/issues/8',
+    ),
+    {
+      origin: 'https://git.example.test',
+      projectPath: 'platform/frontend/web%20app',
+      kind: 'issue',
+      iid: '8',
+    },
   );
 });
 
 test('parses legacy issue and merge request URL forms', () => {
   assert.deepEqual(
     parseGitLabReference('https://gitlab.com/acme/platform/issues/8'),
-    { kind: 'issue', iid: '8' },
+    {
+      origin: 'https://gitlab.com',
+      projectPath: 'acme/platform',
+      kind: 'issue',
+      iid: '8',
+    },
   );
   assert.deepEqual(
-    parseGitLabReference('https://gitlab.com/acme/platform/merge_requests/9'),
-    { kind: 'merge-request', iid: '9' },
+    parseGitLabReference('https://gitlab.com/acme/subgroup/platform/merge_requests/9'),
+    {
+      origin: 'https://gitlab.com',
+      projectPath: 'acme/subgroup/platform',
+      kind: 'merge-request',
+      iid: '9',
+    },
   );
 });
 
 test('keeps the reference for valid issue and merge request child pages', () => {
   assert.deepEqual(
     parseGitLabReference('https://gitlab.com/acme/platform/-/merge_requests/10/diffs'),
-    { kind: 'merge-request', iid: '10' },
+    {
+      origin: 'https://gitlab.com',
+      projectPath: 'acme/platform',
+      kind: 'merge-request',
+      iid: '10',
+    },
   );
   assert.deepEqual(
     parseGitLabReference('https://gitlab.com/acme/platform/-/issues/11/discussion'),
-    { kind: 'issue', iid: '11' },
+    {
+      origin: 'https://gitlab.com',
+      projectPath: 'acme/platform',
+      kind: 'issue',
+      iid: '11',
+    },
   );
 });
 
@@ -60,6 +120,7 @@ test('rejects list, create, edit, malformed, and non-HTTP URLs', () => {
     'https://gitlab.com/acme/platform/-/issue/14',
     'https://gitlab.com/acme/platform/-/merge_request/15',
     'https://gitlab.com/acme/-/issues/16',
+    'https://git.example.test/platform/%E0%A4%A/project/-/issues/7',
     'ftp://gitlab.com/acme/platform/-/issues/17',
     'not a URL',
   ];
