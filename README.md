@@ -6,6 +6,11 @@
 - Issue 显示为 `Issue #123`
 - Merge Request 显示为 `MR !456`
 
+编号右侧常驻一个类似 GitHub 仓库地址控件的复制按钮。鼠标悬停或键盘聚焦时会
+显示 `复制 #123` 或 `复制 !456`；点击后分别复制 `#123` 或 `!456`，并将图标
+短暂切换为绿色对勾和“已复制”提示。复制失败时会显示“复制失败”，所有反馈会在
+1.5 秒后恢复。
+
 扩展兼容 `gitlab.com` 和任意 HTTP/HTTPS 自建 GitLab 域名，例如
 `http://git.tsintergy.com`。目标浏览器为 Chrome 150 和 Arc 1.157.1
 （Chromium 150）。
@@ -59,8 +64,13 @@ http://<self-hosted>/<namespace>/<project>/-/merge_requests/<iid>
 - 不发起网络请求；
 - 不存储或上传数据；
 - 不读取 Issue/MR 正文、评论、账号信息或认证信息；
+- 复制时仅将当前 URL 中解析出的 `#编号` 或 `!编号` 写入本机剪贴板；
 - 不申请 `storage`、`tabs`、`cookies`、`identity` 等扩展 API 权限；
 - 不包含远程代码、统计服务或运行时依赖。
+
+扩展优先使用浏览器 Clipboard API。对于不具备安全上下文 Clipboard API 的 HTTP
+自建 GitLab，会自动使用浏览器内置的本地复制降级方式；该能力不需要增加扩展
+权限，也不会改变上述隐私模型。
 
 实现可直接查看：[URL 解析器](src/parser.js)、[固定标签内容脚本](src/content.js)
 和 [Manifest](manifest.json)。
@@ -89,6 +99,9 @@ npm run test:browser
 ```
 
 完整测试环境、覆盖矩阵、自动化结果与手工验收边界见
-[测试文档](docs/testing.md)。设计和实施过程分别保留在
-[设计文档](docs/superpowers/specs/2026-07-29-gitlab-reference-badge-design.md)与
-[实施计划](docs/superpowers/plans/2026-07-30-gitlab-reference-badge-implementation.md)。
+[测试文档](docs/testing.md)。基础标签的设计和实施过程分别保留在
+[标签设计文档](docs/superpowers/specs/2026-07-29-gitlab-reference-badge-design.md)与
+[标签实施计划](docs/superpowers/plans/2026-07-30-gitlab-reference-badge-implementation.md)；
+快速复制功能对应
+[复制设计文档](docs/superpowers/specs/2026-07-31-gitlab-reference-quick-copy-design.md)与
+[复制实施计划](docs/superpowers/plans/2026-07-31-gitlab-reference-quick-copy-implementation.md)。

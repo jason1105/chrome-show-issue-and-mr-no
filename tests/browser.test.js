@@ -338,25 +338,42 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
     await cdpClient.send('Runtime.enable');
     await cdpClient.send('Page.enable');
     await cdpClient.send('Input.setIgnoreInputEvents', { ignore: false });
+    await cdpClient.send('Browser.grantPermissions', {
+      origin,
+      permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'],
+    });
     await cdpClient.send('Page.navigate', { url: issueUrl });
 
     const initial = await waitForValue(cdpClient, `(() => {
       const host = document.querySelector('#gitlab-reference-badge-host');
       const badge = host?.shadowRoot?.querySelector('[data-reference-badge]');
-      if (!badge || badge.textContent !== 'Issue #123') return null;
-      const rect = host.getBoundingClientRect();
+      const label = host?.shadowRoot?.querySelector('[data-reference-label]');
+      const button = host?.shadowRoot?.querySelector('[data-copy-reference]');
+      const tooltip = host?.shadowRoot?.querySelector('[data-copy-tooltip]');
+      if (!badge || label?.textContent !== 'Issue #123' || !button || !tooltip) return null;
+      const hostRect = host.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
       return {
-        text: badge.textContent,
+        text: label.textContent,
         hostCount: document.querySelectorAll('#gitlab-reference-badge-host').length,
-        top: rect.top,
-        centerX: rect.left + rect.width / 2,
-        centerY: rect.top + rect.height / 2,
+        top: hostRect.top,
+        labelCenterX: labelRect.left + labelRect.width / 2,
+        labelCenterY: labelRect.top + labelRect.height / 2,
+        buttonCenterX: buttonRect.left + buttonRect.width / 2,
+        buttonCenterY: buttonRect.top + buttonRect.height / 2,
         position: getComputedStyle(host).position,
         pointerEvents: getComputedStyle(host).pointerEvents,
-        elementAtCenter: document.elementFromPoint(
-          rect.left + rect.width / 2,
-          rect.top + rect.height / 2,
+        labelElement: document.elementFromPoint(
+          labelRect.left + labelRect.width / 2,
+          labelRect.top + labelRect.height / 2,
         )?.id || null,
+        buttonHit: Boolean(host.shadowRoot.elementFromPoint(
+          buttonRect.left + buttonRect.width / 2,
+          buttonRect.top + buttonRect.height / 2,
+        )?.closest?.('[data-copy-reference]')),
+        ariaLabel: button.getAttribute('aria-label'),
+        copyText: button.getAttribute('data-copy-text'),
       };
     })()`, 'initial Issue badge');
 
@@ -364,26 +381,97 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
     assert.equal(initial.hostCount, 1);
     assert.equal(initial.position, 'fixed');
     assert.equal(initial.pointerEvents, 'none');
-    assert.equal(initial.elementAtCenter, 'click-target');
+    assert.equal(initial.labelElement, 'click-target');
+    assert.equal(initial.buttonHit, true);
+    assert.equal(initial.ariaLabel, '复制 #123');
+    assert.equal(initial.copyText, '#123');
     assert.ok(Math.abs(initial.top - 8) < 0.5, `expected top 8, got ${initial.top}`);
 
     await cdpClient.send('Input.dispatchMouseEvent', {
       type: 'mousePressed',
-      x: initial.centerX,
-      y: initial.centerY,
+      x: initial.labelCenterX,
+      y: initial.labelCenterY,
       button: 'left',
       clickCount: 1,
     });
     await cdpClient.send('Input.dispatchMouseEvent', {
       type: 'mouseReleased',
-      x: initial.centerX,
-      y: initial.centerY,
+      x: initial.labelCenterX,
+      y: initial.labelCenterY,
       button: 'left',
       clickCount: 1,
     });
     assert.equal(await cdpClient.evaluate(
       `document.querySelector('#click-target').dataset.clicks`,
     ), '1');
+
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: initial.buttonCenterX,
+      y: initial.buttonCenterY,
+    });
+    const tooltip = await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const button = shadow?.querySelector('[data-copy-reference]');
+      const tooltip = shadow?.querySelector('[data-copy-tooltip]');
+      const tooltipStyle = tooltip ? getComputedStyle(tooltip) : null;
+      if (
+        !button
+        || !tooltip
+        || tooltipStyle.visibility !== 'visible'
+        || tooltipStyle.opacity !== '1'
+      ) return null;
+      const buttonRect = button.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      return {
+        text: tooltip.textContent,
+        opacity: tooltipStyle.opacity,
+        buttonBottom: buttonRect.bottom,
+        tooltipTop: tooltipRect.top,
+      };
+    })()`, 'copy tooltip on hover');
+    assert.equal(tooltip.text, '复制 #123');
+    assert.equal(tooltip.opacity, '1');
+    assert.ok(
+      tooltip.tooltipTop > tooltip.buttonBottom,
+      `expected tooltip below button, got ${tooltip.tooltipTop} <= ${tooltip.buttonBottom}`,
+    );
+
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: initial.buttonCenterX,
+      y: initial.buttonCenterY,
+      button: 'left',
+      clickCount: 1,
+    });
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: initial.buttonCenterX,
+      y: initial.buttonCenterY,
+      button: 'left',
+      clickCount: 1,
+    });
+    const issueCopied = await waitForValue(cdpClient, `(async () => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const button = shadow?.querySelector('[data-copy-reference]');
+      const icon = shadow?.querySelector('[data-copy-icon]');
+      if (
+        button?.getAttribute('data-copy-state') !== 'success'
+        || icon?.getAttribute('data-copy-icon') !== 'success'
+      ) return null;
+      return {
+        clipboard: await navigator.clipboard.readText(),
+        tooltip: shadow.querySelector('[data-copy-tooltip]').textContent,
+        color: getComputedStyle(button).color,
+        svgCount: button.querySelectorAll('svg').length,
+        pathCount: icon.querySelectorAll('path').length,
+      };
+    })()`, 'Issue reference copied');
+    assert.equal(issueCopied.clipboard, '#123');
+    assert.equal(issueCopied.tooltip, '已复制');
+    assert.equal(issueCopied.color, 'rgb(31, 136, 61)');
+    assert.equal(issueCopied.svgCount, 1);
+    assert.equal(issueCopied.pathCount, 1);
 
     const scrolled = await cdpClient.evaluate(`(async () => {
       window.scrollTo(0, 1800);
@@ -398,15 +486,49 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
       history.pushState({}, '', '/acme/platform/-/merge_requests/456/diffs');
       window.dispatchEvent(new PopStateEvent('popstate'));
     })()`);
-    const mergeRequestText = await waitForValue(cdpClient, `(() => {
+    const mergeRequest = await waitForValue(cdpClient, `(() => {
       const host = document.querySelector('#gitlab-reference-badge-host');
-      const text = host?.shadowRoot?.querySelector('[data-reference-badge]')?.textContent;
-      return text === 'MR !456' ? text : null;
+      const label = host?.shadowRoot?.querySelector('[data-reference-label]');
+      const button = host?.shadowRoot?.querySelector('[data-copy-reference]');
+      if (label?.textContent !== 'MR !456' || button?.dataset.copyState !== 'default') return null;
+      const rect = button.getBoundingClientRect();
+      return {
+        text: label.textContent,
+        copyText: button.getAttribute('data-copy-text'),
+        ariaLabel: button.getAttribute('aria-label'),
+        tooltip: host.shadowRoot.querySelector('[data-copy-tooltip]').textContent,
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+      };
     })()`, 'Merge Request badge after SPA navigation');
-    assert.equal(mergeRequestText, 'MR !456');
+    assert.equal(mergeRequest.text, 'MR !456');
+    assert.equal(mergeRequest.copyText, '!456');
+    assert.equal(mergeRequest.ariaLabel, '复制 !456');
+    assert.equal(mergeRequest.tooltip, '复制 !456');
     assert.equal(await cdpClient.evaluate(
       `document.querySelectorAll('#gitlab-reference-badge-host').length`,
     ), 1);
+
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: mergeRequest.centerX,
+      y: mergeRequest.centerY,
+      button: 'left',
+      clickCount: 1,
+    });
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: mergeRequest.centerX,
+      y: mergeRequest.centerY,
+      button: 'left',
+      clickCount: 1,
+    });
+    assert.equal(await waitForValue(cdpClient, `(async () => {
+      const button = document.querySelector('#gitlab-reference-badge-host')
+        ?.shadowRoot?.querySelector('[data-copy-reference]');
+      if (button?.dataset.copyState !== 'success') return null;
+      return navigator.clipboard.readText();
+    })()`, 'Merge Request reference copied'), '!456');
 
     await cdpClient.evaluate(`(() => {
       history.pushState({}, '', '/acme/platform/-/issues');
