@@ -11,6 +11,15 @@
 短暂切换为绿色对勾和“已复制”提示。复制失败时会显示“复制失败”，所有反馈会在
 1.5 秒后恢复。
 
+鼠标悬停或键盘聚焦编号区域，会打开当前项目的全部 Open Issue 和 Open MR 列表：
+
+- Issue 在前，MR 在后；
+- 当前条目高亮显示“当前”，不重复跳转；
+- 点击其他条目会在当前标签页打开对应详情页；
+- “刷新列表”会绕过 60 秒内存缓存，立即获取最新结果。
+
+触摸设备可点击编号区域打开或关闭列表。接口加载失败不会影响编号显示和快速复制。
+
 扩展兼容 `gitlab.com` 和任意 HTTP/HTTPS 自建 GitLab 域名，例如
 `http://git.tsintergy.com`。目标浏览器为 Chrome 150 和 Arc 1.157.1
 （Chromium 150）。
@@ -59,14 +68,20 @@ http://<self-hosted>/<namespace>/<project>/-/merge_requests/<iid>
 为了在安装后直接支持未知的自建 GitLab 域名，内容脚本匹配所有 HTTP 和 HTTPS
 网站。因此 Chromium 会显示“读取和更改所有网站上的数据”一类权限提示。
 
-扩展的实际行为仅包括解析当前页面 URL，以及创建、更新或移除自己的固定标签：
+扩展会解析当前页面 URL，创建、更新或移除自己的固定标签，并在用户首次打开导航
+列表时请求当前站点的同源 GitLab REST API v4：
 
-- 不发起网络请求；
-- 不存储或上传数据；
-- 不读取 Issue/MR 正文、评论、账号信息或认证信息；
+- 请求仅用于读取当前项目的 Open Issue 和 Open MR；
+- 请求复用浏览器已有的 GitLab 登录会话，不读取或存储 token、Cookie 及其他认证
+  信息；
+- 仅在当前页面内存中缓存 IID、标题和详情 URL，缓存有效期为 60 秒；
+- 不读取 Issue/MR 正文、评论或账号资料，不持久化或上传数据；
 - 复制时仅将当前 URL 中解析出的 `#编号` 或 `!编号` 写入本机剪贴板；
 - 不申请 `storage`、`tabs`、`cookies`、`identity` 等扩展 API 权限；
 - 不包含远程代码、统计服务或运行时依赖。
+
+导航接口返回错误、不可用或当前会话无权访问时，列表会显示失败状态，但固定编号和
+复制功能保持可用。本功能未新增任何扩展权限。
 
 扩展优先使用浏览器 Clipboard API。对于不具备安全上下文 Clipboard API 的 HTTP
 自建 GitLab，会自动使用浏览器内置的本地复制降级方式；该能力不需要增加扩展
@@ -104,4 +119,7 @@ npm run test:browser
 [标签实施计划](docs/superpowers/plans/2026-07-30-gitlab-reference-badge-implementation.md)；
 快速复制功能对应
 [复制设计文档](docs/superpowers/specs/2026-07-31-gitlab-reference-quick-copy-design.md)与
-[复制实施计划](docs/superpowers/plans/2026-07-31-gitlab-reference-quick-copy-implementation.md)。
+[复制实施计划](docs/superpowers/plans/2026-07-31-gitlab-reference-quick-copy-implementation.md)；
+项目内 Open Issue/MR 导航对应
+[导航设计文档](docs/superpowers/specs/2026-07-31-gitlab-open-items-navigation-design.md)与
+[导航实施计划](docs/superpowers/plans/2026-07-31-gitlab-open-items-navigation-implementation.md)。

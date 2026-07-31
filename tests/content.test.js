@@ -29,6 +29,7 @@ class FakeEventTarget {
     event.target ||= this;
     event.currentTarget = this;
     event.preventDefault ||= () => {};
+    event.stopPropagation ||= () => {};
     for (const listener of this.listeners.get(event.type) || []) {
       listener.call(this, event);
     }
@@ -37,6 +38,9 @@ class FakeEventTarget {
 }
 
 function matchesSelector(node, selector) {
+  if (selector.startsWith('#')) {
+    return node.id === selector.slice(1);
+  }
   const attributeMatch = selector.match(/^\[([^=\]]+)(?:="([^"]*)")?\]$/);
   if (attributeMatch) {
     const [, name, value] = attributeMatch;
@@ -61,13 +65,23 @@ class FakeNode extends FakeEventTarget {
     this.style = {};
     this.value = '';
     this.selected = false;
+    this.ownerDocument = null;
   }
 
   append(...nodes) {
     for (const node of nodes) {
       node.parentNode = this;
+      node.setOwnerDocument(this.ownerDocument);
       this.children.push(node);
     }
+  }
+
+  replaceChildren(...nodes) {
+    for (const child of this.children) {
+      child.parentNode = null;
+    }
+    this.children = [];
+    this.append(...nodes);
   }
 
   remove() {
@@ -90,11 +104,17 @@ class FakeNode extends FakeEventTarget {
 
   attachShadow() {
     this.shadowRoot = new FakeNode('#shadow-root');
+    this.shadowRoot.parentNode = this;
+    this.shadowRoot.setOwnerDocument(this.ownerDocument);
     return this.shadowRoot;
   }
 
   querySelector(selector) {
     return this.find((node) => matchesSelector(node, selector));
+  }
+
+  querySelectorAll(selector) {
+    return this.findAll((node) => matchesSelector(node, selector));
   }
 
   find(predicate) {
@@ -106,6 +126,31 @@ class FakeNode extends FakeEventTarget {
     return null;
   }
 
+  findAll(predicate) {
+    const matches = [];
+    for (const child of this.children) {
+      if (predicate(child)) matches.push(child);
+      matches.push(...child.findAll(predicate));
+    }
+    return matches;
+  }
+
+  contains(node) {
+    return node === this || this.children.some((child) => child.contains(node));
+  }
+
+  setOwnerDocument(document) {
+    this.ownerDocument = document;
+    for (const child of this.children) child.setOwnerDocument(document);
+    this.shadowRoot?.setOwnerDocument(document);
+  }
+
+  focus() {
+    if (!this.ownerDocument) return;
+    this.ownerDocument.activeElement = this;
+    this.dispatchEvent({ type: 'focus' });
+  }
+
   select() {
     this.selected = true;
   }
@@ -115,15 +160,19 @@ class FakeDocument extends FakeEventTarget {
   constructor(execCommand) {
     super();
     this.documentElement = new FakeNode('html');
+    this.documentElement.setOwnerDocument(this);
     this.execCommand = execCommand;
+    this.activeElement = null;
   }
 
   createElement(tagName) {
-    return new FakeNode(tagName);
+    const node = new FakeNode(tagName);
+    node.setOwnerDocument(this);
+    return node;
   }
 
   createElementNS(_namespace, tagName) {
-    return new FakeNode(tagName);
+    return this.createElement(tagName);
   }
 
   getElementById(id) {
@@ -132,6 +181,10 @@ class FakeDocument extends FakeEventTarget {
 
   querySelector(selector) {
     return this.documentElement.querySelector(selector);
+  }
+
+  querySelectorAll(selector) {
+    return this.documentElement.querySelectorAll(selector);
   }
 }
 
@@ -145,6 +198,24 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+function jsonResponse(body, options = {}) {
+  return {
+    ok: options.ok ?? true,
+    status: options.status ?? 200,
+    headers: {
+      get(name) {
+        return name.toLowerCase() === 'x-next-page'
+          ? options.nextPage || ''
+          : null;
+      },
+    },
+    json() {
+      if (options.jsonError) return Promise.reject(options.jsonError);
+      return Promise.resolve(body);
+    },
+  };
+}
+
 function createHarness(initialUrl, options = {}) {
   const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
   const windowEvents = new FakeEventTarget();
@@ -154,9 +225,11 @@ function createHarness(initialUrl, options = {}) {
   const observers = [];
   const clipboardWrites = [];
   const execCommandCalls = [];
+  const fetchCalls = [];
   let nextFrameId = 1;
   let nextTimerId = 1;
   let now = 0;
+  let fetchCall = 0;
 
   const execCommand = (command) => {
     execCommandCalls.push(command);
@@ -193,12 +266,38 @@ function createHarness(initialUrl, options = {}) {
     },
   };
 
+  const fetchResults = options.fetchResults || [];
+  const fetch = (url, init) => {
+    fetchCalls.push({ url: String(url), init });
+    const result = fetchResults[fetchCall];
+    fetchCall += 1;
+    if (typeof result === 'function') {
+      try {
+        return Promise.resolve(result(url, init));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    if (result instanceof Error) return Promise.reject(result);
+    if (result?.promise) return result.promise;
+    return Promise.resolve(result);
+  };
+
+  class FakeDate extends Date {
+    static now() {
+      return now;
+    }
+  }
+
   const context = {
     GitLabReferenceParser: parser,
     MutationObserver: FakeMutationObserver,
     document,
+    fetch,
     location,
     navigator: clipboard ? { clipboard } : {},
+    Date: FakeDate,
+    URL,
     addEventListener: windowEvents.addEventListener.bind(windowEvents),
     removeEventListener: windowEvents.removeEventListener.bind(windowEvents),
     requestAnimationFrame(callback) {
@@ -227,6 +326,7 @@ function createHarness(initialUrl, options = {}) {
     location,
     clipboardWrites,
     execCommandCalls,
+    fetchCalls,
     dispatchWindow(type) {
       windowEvents.dispatchEvent({ type });
     },
@@ -271,13 +371,28 @@ function getBadge(document) {
   return {
     host,
     badge: shadow?.querySelector('[data-reference-badge]') || null,
+    trigger: shadow?.querySelector('[data-reference-trigger]') || null,
     label: shadow?.querySelector('[data-reference-label]') || null,
     button: shadow?.querySelector('[data-copy-reference]') || null,
     tooltip: shadow?.querySelector('[data-copy-tooltip]') || null,
     icon: shadow?.querySelector('[data-copy-icon]') || null,
     announcement: shadow?.querySelector('[data-copy-announcement]') || null,
+    panel: shadow?.querySelector('[data-open-items-panel]') || null,
+    refresh: shadow?.querySelector('[data-refresh-open-items]') || null,
     style: shadow?.querySelector('style') || null,
   };
+}
+
+function renderedText(node) {
+  if (!node) return '';
+  return `${node.textContent}${node.children.map(renderedText).join('')}`;
+}
+
+async function openAndLoad(harness) {
+  const rendered = getBadge(harness.document);
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  return getBadge(harness.document);
 }
 
 test('renders a segmented Issue reference with an accessible copy button', () => {
@@ -315,6 +430,10 @@ test('keeps rendering idempotent and declares passive label with an interactive 
   assert.match(rendered.style.textContent, /top:\s*8px\s*!important/);
   assert.match(rendered.style.textContent, /pointer-events:\s*none\s*!important/);
   assert.match(rendered.style.textContent, /\[data-copy-reference\][\s\S]*pointer-events:\s*auto/);
+  assert.match(
+    rendered.style.textContent,
+    /\[data-open-items-panel\][\s\S]*left:\s*50%[\s\S]*transform:\s*translateX\(-50%\)/,
+  );
   assert.match(rendered.style.textContent, /z-index:\s*2147483647\s*!important/);
 });
 
@@ -511,5 +630,325 @@ test('destroy removes the badge and ignores a late copy result', async () => {
   harness.dispatchWindow('hashchange');
   harness.triggerMutation();
   harness.flushAnimationFrames();
+  assert.equal(getBadge(harness.document).host, null);
+});
+
+test('loads Open items with encoded project API URLs, pagination, and current semantics', async () => {
+  const harness = createHarness(
+    'https://git.example.test/group/sub%20group/app/-/issues/15',
+    {
+      fetchResults: [
+        jsonResponse([
+          {
+            iid: 15,
+            title: 'Current issue',
+            web_url: 'https://git.example.test/group/sub%20group/app/-/issues/15',
+          },
+        ], { nextPage: '2' }),
+        jsonResponse([
+          {
+            iid: 8,
+            title: 'Open MR',
+            web_url: 'https://git.example.test/group/sub%20group/app/-/merge_requests/8',
+          },
+        ]),
+        jsonResponse([{ iid: 16, title: 'Fallback issue URL' }]),
+      ],
+    },
+  );
+
+  const rendered = await openAndLoad(harness);
+
+  assert.deepEqual(
+    harness.fetchCalls.map(({ url }) => url),
+    [
+      'https://git.example.test/api/v4/projects/group%2Fsub%20group%2Fapp/issues'
+        + '?state=opened&scope=all&order_by=updated_at&sort=desc&per_page=100&page=1',
+      'https://git.example.test/api/v4/projects/group%2Fsub%20group%2Fapp/'
+        + 'merge_requests?state=opened&scope=all&order_by=updated_at&sort=desc'
+        + '&per_page=100&page=1',
+      'https://git.example.test/api/v4/projects/group%2Fsub%20group%2Fapp/issues'
+        + '?state=opened&scope=all&order_by=updated_at&sort=desc&per_page=100&page=2',
+    ],
+  );
+  for (const { init } of harness.fetchCalls) {
+    assert.equal(init.credentials, 'same-origin');
+    assert.equal(init.headers.accept, 'application/json');
+  }
+
+  assert.equal(rendered.trigger.tagName, 'BUTTON');
+  assert.equal(rendered.trigger.getAttribute('type'), 'button');
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'true');
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 3);
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '3');
+
+  const current = rendered.panel.querySelector('[data-current-open-item]');
+  assert.equal(current.tagName, 'SPAN');
+  assert.equal(current.getAttribute('aria-current'), 'page');
+  assert.equal(current.getAttribute('href'), null);
+  assert.match(renderedText(current), /#15Current issue当前/);
+
+  const fallback = rendered.panel.querySelector('[data-iid="16"]');
+  assert.equal(fallback.tagName, 'A');
+  assert.equal(
+    fallback.getAttribute('href'),
+    'https://git.example.test/group/sub%20group/app/-/issues/16',
+  );
+  assert.equal(
+    rendered.panel.querySelectorAll('[data-open-items-group]')[0]
+      .getAttribute('data-open-items-group'),
+    'issues',
+  );
+  assert.equal(
+    rendered.panel.querySelectorAll('[data-open-items-group]')[1]
+      .getAttribute('data-open-items-group'),
+    'merge-requests',
+  );
+});
+
+test('reuses a complete snapshot for 60 seconds and refreshes expired data', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse([{ iid: 1, title: 'Initial issue' }]),
+      jsonResponse([{ iid: 2, title: 'Initial MR' }]),
+      jsonResponse([{ iid: 1, title: 'Refreshed issue' }]),
+      jsonResponse([{ iid: 3, title: 'Refreshed MR' }]),
+    ],
+  });
+
+  let rendered = await openAndLoad(harness);
+  assert.equal(harness.fetchCalls.length, 2);
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'Escape' });
+
+  harness.advanceTimersBy(59999);
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  assert.equal(harness.fetchCalls.length, 2);
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'Escape' });
+
+  harness.advanceTimersBy(1);
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  assert.match(renderedText(rendered.panel), /Initial issue/);
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+
+  assert.equal(harness.fetchCalls.length, 4);
+  assert.match(renderedText(rendered.panel), /Refreshed issue/);
+  assert.doesNotMatch(renderedText(rendered.panel), /Initial issue/);
+});
+
+test('shows a successful group on initial partial failure without caching it', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      new Error('Issues unavailable'),
+      jsonResponse([{ iid: 4, title: 'Available MR' }]),
+      jsonResponse([{ iid: 1, title: 'Recovered issue' }]),
+      jsonResponse([{ iid: 4, title: 'Available MR' }]),
+    ],
+  });
+
+  let rendered = await openAndLoad(harness);
+  const groups = rendered.panel.querySelectorAll('[data-open-items-group]');
+  assert.equal(groups[0].getAttribute('data-open-items-state'), 'error');
+  assert.match(renderedText(groups[0]), /无法加载/);
+  assert.equal(groups[1].getAttribute('data-open-items-state'), 'ready');
+  assert.match(renderedText(groups[1]), /Available MR/);
+
+  rendered.refresh.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+  assert.equal(harness.fetchCalls.length, 4);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+  assert.match(renderedText(rendered.panel), /Recovered issue/);
+});
+
+test('keeps a complete snapshot when a manual refresh partially fails', async () => {
+  const issueRefresh = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse([{ iid: 1, title: 'Stable issue' }]),
+      jsonResponse([{ iid: 2, title: 'Stable MR' }]),
+      issueRefresh,
+      jsonResponse([{ iid: 3, title: 'Uncommitted MR' }]),
+    ],
+  });
+
+  let rendered = await openAndLoad(harness);
+  rendered.refresh.dispatchEvent({ type: 'click' });
+  assert.equal(rendered.refresh.getAttribute('aria-busy'), 'true');
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+
+  issueRefresh.reject(new Error('refresh failed'));
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+
+  assert.match(renderedText(rendered.panel), /刷新失败，显示上次结果/);
+  assert.match(renderedText(rendered.panel), /Stable issue/);
+  assert.match(renderedText(rendered.panel), /Stable MR/);
+  assert.doesNotMatch(renderedText(rendered.panel), /Uncommitted MR/);
+});
+
+test('opens after hover delay and closes only after leaving the navigation region', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(149);
+  assert.equal(rendered.panel.hidden, true);
+  harness.advanceTimersBy(1);
+  assert.equal(rendered.panel.hidden, false);
+
+  rendered.trigger.dispatchEvent({ type: 'mouseleave' });
+  harness.advanceTimersBy(249);
+  assert.equal(rendered.panel.hidden, false);
+  rendered.panel.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(1);
+  assert.equal(rendered.panel.hidden, false);
+
+  rendered.panel.dispatchEvent({ type: 'mouseleave' });
+  rendered.button.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(250);
+  assert.equal(rendered.panel.hidden, false);
+
+  rendered.button.dispatchEvent({ type: 'mouseleave' });
+  harness.advanceTimersBy(250);
+  assert.equal(rendered.panel.hidden, true);
+});
+
+test('supports keyboard opening and Escape closes with focus restored', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'keydown', key: 'Enter' });
+  await harness.flushMicrotasks();
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'true');
+
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'Escape' });
+  assert.equal(rendered.panel.hidden, true);
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(harness.document.activeElement, rendered.trigger);
+
+  rendered.trigger.dispatchEvent({ type: 'keydown', key: ' ' });
+  assert.equal(rendered.panel.hidden, false);
+  rendered.trigger.dispatchEvent({ type: 'keydown', key: 'Enter' });
+  assert.equal(rendered.panel.hidden, false);
+});
+
+test('touch toggles the panel and an outside pointer closes it', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'click', pointerType: 'touch' });
+  assert.equal(rendered.panel.hidden, false);
+  rendered.trigger.dispatchEvent({ type: 'click', pointerType: 'touch' });
+  assert.equal(rendered.panel.hidden, true);
+
+  rendered.trigger.dispatchEvent({ type: 'click', pointerType: 'touch' });
+  const outside = harness.document.createElement('div');
+  harness.document.documentElement.append(outside);
+  harness.document.dispatchEvent({ type: 'pointerdown', target: outside });
+  assert.equal(rendered.panel.hidden, true);
+});
+
+test('touch focus followed by click opens the panel instead of immediately closing it', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'pointerdown', pointerType: 'touch' });
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  assert.equal(rendered.panel.hidden, true);
+
+  rendered.trigger.dispatchEvent({ type: 'click', pointerType: 'touch' });
+  assert.equal(rendered.panel.hidden, false);
+});
+
+test('focus stays open inside the extension and closes after focus leaves', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  const rendered = getBadge(harness.document);
+  const outside = harness.document.createElement('button');
+  harness.document.documentElement.append(outside);
+
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  rendered.host.shadowRoot.dispatchEvent({
+    type: 'focusout',
+    relatedTarget: rendered.button,
+  });
+  assert.equal(rendered.panel.hidden, false);
+
+  rendered.host.shadowRoot.dispatchEvent({ type: 'focusout', relatedTarget: outside });
+  assert.equal(rendered.panel.hidden, true);
+});
+
+test('reuses same-project data while moving the current marker after SPA navigation', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 1, title: 'First issue' },
+        { iid: 2, title: 'Second issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+
+  let rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelector('[data-current-open-item]').getAttribute('data-iid'), '1');
+
+  harness.location.href = 'https://gitlab.com/acme/platform/-/issues/2';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  rendered = getBadge(harness.document);
+
+  assert.equal(harness.fetchCalls.length, 2);
+  assert.equal(rendered.panel.querySelector('[data-current-open-item]').getAttribute('data-iid'), '2');
+});
+
+test('ignores stale project results after navigating to another project', async () => {
+  const oldIssues = deferred();
+  const oldMergeRequests = deferred();
+  const harness = createHarness('https://gitlab.com/acme/old-app/-/issues/1', {
+    fetchResults: [
+      oldIssues,
+      oldMergeRequests,
+      jsonResponse([{ iid: 7, title: 'New project issue' }]),
+      jsonResponse([{ iid: 8, title: 'New project MR' }]),
+    ],
+  });
+
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  harness.location.href = 'https://gitlab.com/acme/new-app/-/issues/7';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+
+  oldIssues.resolve(jsonResponse([{ iid: 1, title: 'Stale issue' }]));
+  oldMergeRequests.resolve(jsonResponse([{ iid: 2, title: 'Stale MR' }]));
+  await harness.flushMicrotasks();
+
+  const rendered = getBadge(harness.document);
+  assert.match(renderedText(rendered.panel), /New project issue/);
+  assert.match(renderedText(rendered.panel), /New project MR/);
+  assert.doesNotMatch(renderedText(rendered.panel), /Stale issue|Stale MR/);
+});
+
+test('ignores navigation responses after leaving a detail page', async () => {
+  const issues = deferred();
+  const mergeRequests = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [issues, mergeRequests],
+  });
+
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  harness.location.href = 'https://gitlab.com/acme/platform/-/issues';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  issues.resolve(jsonResponse([{ iid: 1, title: 'Late issue' }]));
+  mergeRequests.resolve(jsonResponse([]));
+  await harness.flushMicrotasks();
+
   assert.equal(getBadge(harness.document).host, null);
 });

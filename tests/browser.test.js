@@ -50,6 +50,8 @@ function findExecutable(environmentVariable, candidates, label) {
 }
 
 function createFixtureServer() {
+  const requestCounts = { issues: 0, mergeRequests: 0 };
+  let origin = '';
   const html = `<!doctype html>
 <html>
   <head>
@@ -80,8 +82,50 @@ function createFixtureServer() {
 </html>`;
 
   const server = http.createServer((request, response) => {
+    const requestUrl = new URL(request.url, origin || 'http://127.0.0.1');
     if (request.url === '/favicon.ico') {
       response.writeHead(204).end();
+      return;
+    }
+
+    const apiPrefix = '/api/v4/projects/acme%2Fplatform/';
+    if (requestUrl.pathname === `${apiPrefix}issues`) {
+      requestCounts.issues += 1;
+      const refreshed = requestCounts.issues > 1;
+      response.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-next-page': '',
+      });
+      response.end(JSON.stringify([
+        {
+          iid: 123,
+          title: refreshed ? 'Refreshed current issue' : 'Current issue',
+          web_url: `${origin}/acme/platform/-/issues/123`,
+        },
+        {
+          iid: 124,
+          title: refreshed ? 'Refreshed issue' : 'Another issue',
+          web_url: `${origin}/acme/platform/-/issues/124`,
+        },
+      ]));
+      return;
+    }
+
+    if (requestUrl.pathname === `${apiPrefix}merge_requests`) {
+      requestCounts.mergeRequests += 1;
+      response.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-next-page': '',
+      });
+      response.end(JSON.stringify([
+        {
+          iid: 456,
+          title: requestCounts.mergeRequests > 1 ? 'Refreshed MR' : 'Open MR',
+          web_url: `${origin}/acme/platform/-/merge_requests/456`,
+        },
+      ]));
       return;
     }
 
@@ -96,9 +140,11 @@ function createFixtureServer() {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
+      origin = `http://127.0.0.1:${address.port}`;
       resolve({
         server,
-        origin: `http://127.0.0.1:${address.port}`,
+        origin,
+        requestCounts,
       });
     });
   });
@@ -272,6 +318,23 @@ async function waitForValue(client, expression, description) {
   throw new Error(`Timed out waiting for ${description}; last value: ${lastValue}`);
 }
 
+async function clickAt(client, x, y) {
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1,
+  });
+}
+
 async function stopProcess(child) {
   if (child.exitCode !== null) return;
   child.kill('SIGTERM');
@@ -284,7 +347,7 @@ async function stopProcess(child) {
   ]);
 }
 
-test('keeps the GitLab reference visible through scrolling and SPA navigation', {
+test('navigates current-project open items while preserving copy and SPA behavior', {
   timeout: 45000,
 }, async () => {
   const chromeExecutable = findExecutable('CHROME_PATH', defaultChromePaths, 'Chrome/Chromium');
@@ -294,7 +357,7 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
     'ChromeDriver',
   );
   const profileDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlab-reference-badge-'));
-  const { server, origin } = await createFixtureServer();
+  const { server, origin, requestCounts } = await createFixtureServer();
   const issueUrl = `${origin}/acme/platform/-/issues/123`;
   const driverLogs = [];
   let driver;
@@ -352,22 +415,23 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
       const tooltip = host?.shadowRoot?.querySelector('[data-copy-tooltip]');
       if (!badge || label?.textContent !== 'Issue #123' || !button || !tooltip) return null;
       const hostRect = host.getBoundingClientRect();
-      const labelRect = label.getBoundingClientRect();
+      const trigger = host.shadowRoot.querySelector('[data-reference-trigger]');
+      const triggerRect = trigger.getBoundingClientRect();
       const buttonRect = button.getBoundingClientRect();
       return {
         text: label.textContent,
         hostCount: document.querySelectorAll('#gitlab-reference-badge-host').length,
         top: hostRect.top,
-        labelCenterX: labelRect.left + labelRect.width / 2,
-        labelCenterY: labelRect.top + labelRect.height / 2,
+        triggerCenterX: triggerRect.left + triggerRect.width / 2,
+        triggerCenterY: triggerRect.top + triggerRect.height / 2,
         buttonCenterX: buttonRect.left + buttonRect.width / 2,
         buttonCenterY: buttonRect.top + buttonRect.height / 2,
         position: getComputedStyle(host).position,
         pointerEvents: getComputedStyle(host).pointerEvents,
-        labelElement: document.elementFromPoint(
-          labelRect.left + labelRect.width / 2,
-          labelRect.top + labelRect.height / 2,
-        )?.id || null,
+        triggerHit: Boolean(host.shadowRoot.elementFromPoint(
+          triggerRect.left + triggerRect.width / 2,
+          triggerRect.top + triggerRect.height / 2,
+        )?.closest?.('[data-reference-trigger]')),
         buttonHit: Boolean(host.shadowRoot.elementFromPoint(
           buttonRect.left + buttonRect.width / 2,
           buttonRect.top + buttonRect.height / 2,
@@ -381,29 +445,100 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
     assert.equal(initial.hostCount, 1);
     assert.equal(initial.position, 'fixed');
     assert.equal(initial.pointerEvents, 'none');
-    assert.equal(initial.labelElement, 'click-target');
+    assert.equal(initial.triggerHit, true);
     assert.equal(initial.buttonHit, true);
     assert.equal(initial.ariaLabel, '复制 #123');
     assert.equal(initial.copyText, '#123');
     assert.ok(Math.abs(initial.top - 8) < 0.5, `expected top 8, got ${initial.top}`);
+    assert.deepEqual(requestCounts, { issues: 0, mergeRequests: 0 });
 
     await cdpClient.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: initial.labelCenterX,
-      y: initial.labelCenterY,
-      button: 'left',
-      clickCount: 1,
+      type: 'mouseMoved',
+      x: initial.triggerCenterX,
+      y: initial.triggerCenterY,
     });
-    await cdpClient.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: initial.labelCenterX,
-      y: initial.labelCenterY,
-      button: 'left',
-      clickCount: 1,
+    await delay(75);
+    assert.equal(await cdpClient.evaluate(`(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      return shadow?.querySelector('[data-open-items-panel]')?.hidden;
+    })()`), true);
+    assert.deepEqual(requestCounts, { issues: 0, mergeRequests: 0 });
+
+    const openItems = await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
+      const groups = panel ? [...panel.querySelectorAll('[data-open-items-group]')] : [];
+      const current = panel?.querySelector('[data-current-open-item]');
+      const links = panel ? [...panel.querySelectorAll('a[data-open-item]')] : [];
+      const refresh = panel?.querySelector('[data-refresh-open-items]');
+      if (
+        !panel
+        || panel.hidden
+        || groups.length !== 2
+        || panel.querySelectorAll('[data-open-item]').length !== 3
+        || !current
+        || !refresh
+      ) return null;
+      const refreshRect = refresh.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      return {
+        expanded: shadow.querySelector('[data-reference-trigger]').getAttribute('aria-expanded'),
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        viewportWidth: window.innerWidth,
+        groups: groups.map((group) => ({
+          name: group.getAttribute('data-open-items-group'),
+          heading: group.querySelector('[data-open-items-group-heading] span').textContent,
+        })),
+        current: {
+          tagName: current.tagName,
+          href: current.getAttribute('href'),
+          ariaCurrent: current.getAttribute('aria-current'),
+          iid: current.getAttribute('data-iid'),
+          marker: current.querySelector('[data-current-marker]')?.textContent,
+        },
+        links: links.map((link) => ({
+          tagName: link.tagName,
+          iid: link.getAttribute('data-iid'),
+          href: link.href,
+        })),
+        refreshText: refresh.textContent,
+        refreshCenterX: refreshRect.left + refreshRect.width / 2,
+        refreshCenterY: refreshRect.top + refreshRect.height / 2,
+      };
+    })()`, 'Open items panel after hover');
+    assert.equal(openItems.expanded, 'true');
+    assert.ok(openItems.panelLeft >= 0, `panel left edge is ${openItems.panelLeft}`);
+    assert.ok(
+      openItems.panelRight <= openItems.viewportWidth,
+      `panel right edge ${openItems.panelRight} exceeds viewport ${openItems.viewportWidth}`,
+    );
+    assert.deepEqual(openItems.groups, [
+      { name: 'issues', heading: 'Issues' },
+      { name: 'merge-requests', heading: 'Merge requests' },
+    ]);
+    assert.deepEqual(openItems.current, {
+      tagName: 'SPAN',
+      href: null,
+      ariaCurrent: 'page',
+      iid: '123',
+      marker: '当前',
     });
-    assert.equal(await cdpClient.evaluate(
-      `document.querySelector('#click-target').dataset.clicks`,
-    ), '1');
+    assert.deepEqual(openItems.links, [
+      { tagName: 'A', iid: '124', href: `${origin}/acme/platform/-/issues/124` },
+      { tagName: 'A', iid: '456', href: `${origin}/acme/platform/-/merge_requests/456` },
+    ]);
+    assert.match(openItems.refreshText, /刷新列表/);
+    assert.deepEqual(requestCounts, { issues: 1, mergeRequests: 1 });
+
+    await clickAt(cdpClient, openItems.refreshCenterX, openItems.refreshCenterY);
+    assert.equal(await waitForValue(cdpClient, `(() => {
+      const panel = document.querySelector('#gitlab-reference-badge-host')
+        ?.shadowRoot?.querySelector('[data-open-items-panel]');
+      const refreshed = panel?.querySelector('[data-kind="issue"][data-iid="124"]');
+      return refreshed?.querySelector('[data-open-item-title]')?.textContent === 'Refreshed issue';
+    })()`, 'refreshed Open items list'), true);
+    assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
 
     await cdpClient.send('Input.dispatchMouseEvent', {
       type: 'mouseMoved',
@@ -437,20 +572,7 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
       `expected tooltip below button, got ${tooltip.tooltipTop} <= ${tooltip.buttonBottom}`,
     );
 
-    await cdpClient.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: initial.buttonCenterX,
-      y: initial.buttonCenterY,
-      button: 'left',
-      clickCount: 1,
-    });
-    await cdpClient.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: initial.buttonCenterX,
-      y: initial.buttonCenterY,
-      button: 'left',
-      clickCount: 1,
-    });
+    await clickAt(cdpClient, initial.buttonCenterX, initial.buttonCenterY);
     const issueCopied = await waitForValue(cdpClient, `(async () => {
       const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
       const button = shadow?.querySelector('[data-copy-reference]');
@@ -482,6 +604,38 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
     assert.ok(scrolled.scrollY >= 1800);
     assert.ok(Math.abs(scrolled.top - initial.top) < 0.5);
 
+    await cdpClient.evaluate(`document.querySelector('#gitlab-reference-badge-host')
+      .shadowRoot.querySelector('[data-reference-trigger]').focus()`);
+    await cdpClient.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Enter',
+      code: 'Enter',
+    });
+    await cdpClient.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+    });
+    await cdpClient.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Escape',
+      code: 'Escape',
+    });
+    await cdpClient.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+    });
+    assert.deepEqual(await cdpClient.evaluate(`(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host').shadowRoot;
+      const trigger = shadow.querySelector('[data-reference-trigger]');
+      return {
+        hidden: shadow.querySelector('[data-open-items-panel]').hidden,
+        expanded: trigger.getAttribute('aria-expanded'),
+        triggerFocused: shadow.activeElement === trigger,
+      };
+    })()`), { hidden: true, expanded: 'false', triggerFocused: true });
+
     await cdpClient.evaluate(`(() => {
       history.pushState({}, '', '/acme/platform/-/merge_requests/456/diffs');
       window.dispatchEvent(new PopStateEvent('popstate'));
@@ -508,27 +662,109 @@ test('keeps the GitLab reference visible through scrolling and SPA navigation', 
     assert.equal(await cdpClient.evaluate(
       `document.querySelectorAll('#gitlab-reference-badge-host').length`,
     ), 1);
+    assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
 
-    await cdpClient.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: mergeRequest.centerX,
-      y: mergeRequest.centerY,
-      button: 'left',
-      clickCount: 1,
+    await cdpClient.evaluate(`document.querySelector('#gitlab-reference-badge-host')
+      .shadowRoot.querySelector('[data-reference-trigger]').focus()`);
+    await cdpClient.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Enter',
+      code: 'Enter',
     });
-    await cdpClient.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: mergeRequest.centerX,
-      y: mergeRequest.centerY,
-      button: 'left',
-      clickCount: 1,
+    await cdpClient.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
     });
+    const currentMergeRequest = await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
+      const current = panel?.querySelector('[data-current-open-item]');
+      if (panel?.hidden || current?.getAttribute('data-iid') !== '456') return null;
+      return {
+        tagName: current.tagName,
+        href: current.getAttribute('href'),
+        ariaCurrent: current.getAttribute('aria-current'),
+        marker: current.querySelector('[data-current-marker]')?.textContent,
+      };
+    })()`, 'cached list with current Merge Request');
+    assert.deepEqual(currentMergeRequest, {
+      tagName: 'SPAN',
+      href: null,
+      ariaCurrent: 'page',
+      marker: '当前',
+    });
+    assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
+
+    await clickAt(cdpClient, mergeRequest.centerX, mergeRequest.centerY);
     assert.equal(await waitForValue(cdpClient, `(async () => {
       const button = document.querySelector('#gitlab-reference-badge-host')
         ?.shadowRoot?.querySelector('[data-copy-reference]');
       if (button?.dataset.copyState !== 'success') return null;
       return navigator.clipboard.readText();
     })()`, 'Merge Request reference copied'), '!456');
+
+    await cdpClient.evaluate(`(() => {
+      history.pushState({}, '', '/acme/platform/-/issues/123');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    })()`);
+    const issueAgain = await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      if (shadow?.querySelector('[data-reference-label]')?.textContent !== 'Issue #123') return null;
+      const trigger = shadow.querySelector('[data-reference-trigger]');
+      const rect = trigger.getBoundingClientRect();
+      return {
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+      };
+    })()`, 'Issue badge after returning with SPA navigation');
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: 10,
+      y: 100,
+    });
+    await delay(300);
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: issueAgain.centerX,
+      y: issueAgain.centerY,
+    });
+    const mergeRequestLink = await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
+      const link = panel?.querySelector('a[data-kind="merge-request"][data-iid="456"]');
+      if (!link || panel.hidden) return null;
+      const rect = link.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return null;
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      return {
+        centerX,
+        centerY,
+        href: link.href,
+        hit: shadow.elementFromPoint(centerX, centerY)
+          ?.closest?.('a[data-kind="merge-request"]')?.getAttribute('data-iid') || null,
+      };
+    })()`, 'Merge Request navigation link');
+    assert.equal(mergeRequestLink.href, `${origin}/acme/platform/-/merge_requests/456`);
+    assert.equal(mergeRequestLink.hit, '456');
+    assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: mergeRequestLink.centerX,
+      y: mergeRequestLink.centerY,
+    });
+    await clickAt(cdpClient, mergeRequestLink.centerX, mergeRequestLink.centerY);
+    assert.equal(await waitForValue(
+      cdpClient,
+      `location.pathname === '/acme/platform/-/merge_requests/456'`,
+      'current-tab URL navigation to Merge Request',
+    ), true);
+    assert.equal(await waitForValue(cdpClient, `(() => {
+      const label = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot
+        ?.querySelector('[data-reference-label]');
+      return label?.textContent === 'MR !456';
+    })()`, 'Merge Request badge after current-tab navigation'), true);
 
     await cdpClient.evaluate(`(() => {
       history.pushState({}, '', '/acme/platform/-/issues');
