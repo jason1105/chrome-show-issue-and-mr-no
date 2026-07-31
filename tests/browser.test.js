@@ -533,10 +533,12 @@ test('navigates current-project open items while preserving copy and SPA behavio
 
     await clickAt(cdpClient, openItems.refreshCenterX, openItems.refreshCenterY);
     assert.equal(await waitForValue(cdpClient, `(() => {
-      const panel = document.querySelector('#gitlab-reference-badge-host')
-        ?.shadowRoot?.querySelector('[data-open-items-panel]');
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
       const refreshed = panel?.querySelector('[data-kind="issue"][data-iid="124"]');
-      return refreshed?.querySelector('[data-open-item-title]')?.textContent === 'Refreshed issue';
+      return !panel?.hidden
+        && shadow.querySelector('[data-reference-trigger]')?.getAttribute('aria-expanded') === 'true'
+        && refreshed?.querySelector('[data-open-item-title]')?.textContent === 'Refreshed issue';
     })()`, 'refreshed Open items list'), true);
     assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
 

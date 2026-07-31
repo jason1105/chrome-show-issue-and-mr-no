@@ -35,6 +35,7 @@
   let copyGeneration = 0;
   let observer = null;
   let destroyed = false;
+  let renderingNavigationPanel = false;
   let suppressNextFocusOpen = false;
   let suppressTouchFocusOpen = false;
   const navigation = {
@@ -407,6 +408,8 @@
   function renderNavigationPanel(host) {
     const { panel, trigger } = getBadgeParts(host);
     if (!panel || !trigger) return;
+    const restoreRefreshFocus = host.shadowRoot?.activeElement
+      ?.matches?.('[data-refresh-open-items]');
 
     panel.hidden = !navigation.open;
     trigger.setAttribute('aria-expanded', navigation.open ? 'true' : 'false');
@@ -452,7 +455,13 @@
         navigation.errors.mergeRequests,
       ),
     );
-    panel.replaceChildren(...children);
+    renderingNavigationPanel = true;
+    try {
+      panel.replaceChildren(...children);
+    } finally {
+      renderingNavigationPanel = false;
+    }
+    if (restoreRefreshFocus && navigation.open) refresh.focus();
   }
 
   function isCurrentNavigationRequest(generation, projectKey, host) {
@@ -595,6 +604,7 @@
   }
 
   function handleNavigationFocusOut(event) {
+    if (renderingNavigationPanel) return;
     if (!event.currentTarget.contains(event.relatedTarget)) closeNavigation();
   }
 
