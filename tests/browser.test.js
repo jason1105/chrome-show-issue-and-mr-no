@@ -335,6 +335,61 @@ async function clickAt(client, x, y) {
   });
 }
 
+async function dragAt(client, startX, startY, endX, endY) {
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: startX,
+    y: startY,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: startX,
+    y: startY,
+    button: 'left',
+    buttons: 1,
+    clickCount: 1,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: endX,
+    y: endY,
+    button: 'left',
+    buttons: 1,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: endX,
+    y: endY,
+    button: 'left',
+    clickCount: 1,
+  });
+}
+
+async function doubleClickAt(client, x, y) {
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x,
+    y,
+  });
+  for (const clickCount of [1, 2]) {
+    await client.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x,
+      y,
+      button: 'left',
+      buttons: 1,
+      clickCount,
+    });
+    await client.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x,
+      y,
+      button: 'left',
+      clickCount,
+    });
+  }
+}
+
 async function stopProcess(child) {
   if (child.exitCode !== null) return;
   child.kill('SIGTERM');
@@ -542,10 +597,140 @@ test('navigates current-project open items while preserving copy and SPA behavio
     })()`, 'refreshed Open items list'), true);
     assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
 
+    const dragStart = await cdpClient.evaluate(`(() => {
+      const host = document.querySelector('#gitlab-reference-badge-host');
+      const handle = host?.shadowRoot?.querySelector('[data-drag-handle]');
+      if (!host || !handle) return null;
+      const hostRect = host.getBoundingClientRect();
+      const handleRect = handle.getBoundingClientRect();
+      const targetDeltaX = window.innerWidth - 8 - hostRect.width - hostRect.left;
+      return {
+        startX: handleRect.left + handleRect.width / 2,
+        startY: handleRect.top + handleRect.height / 2,
+        endX: handleRect.left + handleRect.width / 2 + targetDeltaX,
+        endY: window.innerHeight / 2,
+      };
+    })()`);
+    assert.ok(dragStart, 'drag handle should be available while the panel is open');
+    await dragAt(
+      cdpClient,
+      dragStart.startX,
+      dragStart.startY,
+      dragStart.endX,
+      dragStart.endY,
+    );
+    const dragged = await waitForValue(cdpClient, `(() => {
+      const host = document.querySelector('#gitlab-reference-badge-host');
+      const shadow = host?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
+      if (!host || !panel || host.getAttribute('data-edge') !== 'right' || !panel.hidden) return null;
+      const hostRect = host.getBoundingClientRect();
+      return {
+        edge: host.getAttribute('data-edge'),
+        right: hostRect.right,
+        top: hostRect.top,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      };
+    })()`, 'right-edge drag and panel close');
+    assert.equal(dragged.edge, 'right');
+    assert.ok(Math.abs(dragged.right - (dragged.viewportWidth - 8)) < 0.5);
+    assert.ok(dragged.top > 8 && dragged.top < dragged.viewportHeight - 40);
+
     await cdpClient.send('Input.dispatchMouseEvent', {
       type: 'mouseMoved',
-      x: initial.buttonCenterX,
-      y: initial.buttonCenterY,
+      x: dragged.right - 40,
+      y: dragged.top + 15,
+    });
+    const rightPanel = await waitForValue(cdpClient, `(() => {
+      const host = document.querySelector('#gitlab-reference-badge-host');
+      const shadow = host?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
+      if (!host || !panel || panel.hidden || host.getAttribute('data-panel-placement') !== 'left') return null;
+      const rect = panel.getBoundingClientRect();
+      return {
+        placement: host.getAttribute('data-panel-placement'),
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      };
+    })()`, 'left-facing panel at right edge');
+    assert.equal(rightPanel.placement, 'left');
+    assert.ok(rightPanel.left >= 0, `panel left edge is ${rightPanel.left}`);
+    assert.ok(
+      rightPanel.right <= rightPanel.viewportWidth,
+      `panel right edge ${rightPanel.right} exceeds viewport ${rightPanel.viewportWidth}`,
+    );
+    assert.ok(rightPanel.top >= 0, `panel top edge is ${rightPanel.top}`);
+    assert.ok(
+      rightPanel.bottom <= rightPanel.viewportHeight,
+      `panel bottom edge ${rightPanel.bottom} exceeds viewport ${rightPanel.viewportHeight}`,
+    );
+
+    await cdpClient.send('Page.reload');
+    const restoredRight = await waitForValue(cdpClient, `(() => {
+      const host = document.querySelector('#gitlab-reference-badge-host');
+      const shadow = host?.shadowRoot;
+      if (
+        !host
+        || shadow?.querySelector('[data-reference-label]')?.textContent !== 'Issue #123'
+        || host.getAttribute('data-edge') !== 'right'
+      ) return null;
+      const rect = host.getBoundingClientRect();
+      return {
+        edge: host.getAttribute('data-edge'),
+        right: rect.right,
+        top: rect.top,
+        viewportWidth: window.innerWidth,
+      };
+    })()`, 'stored right-edge position after reload');
+    assert.equal(restoredRight.edge, 'right');
+    assert.ok(Math.abs(restoredRight.right - (restoredRight.viewportWidth - 8)) < 0.5);
+    assert.ok(restoredRight.top > 8);
+
+    const resetHandle = await cdpClient.evaluate(`(() => {
+      const handle = document.querySelector('#gitlab-reference-badge-host')
+        ?.shadowRoot?.querySelector('[data-drag-handle]');
+      if (!handle) return null;
+      const rect = handle.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    assert.ok(resetHandle, 'drag handle should remain available after reload');
+    await doubleClickAt(cdpClient, resetHandle.x, resetHandle.y);
+    const resetPosition = await waitForValue(cdpClient, `(() => {
+      const host = document.querySelector('#gitlab-reference-badge-host');
+      if (!host || host.getAttribute('data-edge') !== 'top') return null;
+      const rect = host.getBoundingClientRect();
+      return {
+        edge: host.getAttribute('data-edge'),
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        viewportWidth: window.innerWidth,
+      };
+    })()`, 'double-click reset position');
+    assert.equal(resetPosition.edge, 'top');
+    assert.ok(Math.abs(resetPosition.top - 8) < 0.5);
+    assert.ok(
+      Math.abs(resetPosition.left - (resetPosition.viewportWidth - resetPosition.width) / 2) < 0.5,
+    );
+
+    const resetButton = await cdpClient.evaluate(`(() => {
+      const button = document.querySelector('#gitlab-reference-badge-host')
+        ?.shadowRoot?.querySelector('[data-copy-reference]');
+      if (!button) return null;
+      const rect = button.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    assert.ok(resetButton, 'copy button should remain available after reset');
+
+    await cdpClient.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: resetButton.x,
+      y: resetButton.y,
     });
     const tooltip = await waitForValue(cdpClient, `(() => {
       const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
@@ -574,7 +759,7 @@ test('navigates current-project open items while preserving copy and SPA behavio
       `expected tooltip below button, got ${tooltip.tooltipTop} <= ${tooltip.buttonBottom}`,
     );
 
-    await clickAt(cdpClient, initial.buttonCenterX, initial.buttonCenterY);
+    await clickAt(cdpClient, resetButton.x, resetButton.y);
     const issueCopied = await waitForValue(cdpClient, `(async () => {
       const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
       const button = shadow?.querySelector('[data-copy-reference]');
@@ -664,7 +849,7 @@ test('navigates current-project open items while preserving copy and SPA behavio
     assert.equal(await cdpClient.evaluate(
       `document.querySelectorAll('#gitlab-reference-badge-host').length`,
     ), 1);
-    assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
+    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
 
     await cdpClient.evaluate(`document.querySelector('#gitlab-reference-badge-host')
       .shadowRoot.querySelector('[data-reference-trigger]').focus()`);
@@ -696,7 +881,7 @@ test('navigates current-project open items while preserving copy and SPA behavio
       ariaCurrent: 'page',
       marker: '当前',
     });
-    assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
+    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
 
     await clickAt(cdpClient, mergeRequest.centerX, mergeRequest.centerY);
     assert.equal(await waitForValue(cdpClient, `(async () => {
@@ -750,7 +935,7 @@ test('navigates current-project open items while preserving copy and SPA behavio
     })()`, 'Merge Request navigation link');
     assert.equal(mergeRequestLink.href, `${origin}/acme/platform/-/merge_requests/456`);
     assert.equal(mergeRequestLink.hit, '456');
-    assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
+    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
     await cdpClient.send('Input.dispatchMouseEvent', {
       type: 'mouseMoved',
       x: mergeRequestLink.centerX,

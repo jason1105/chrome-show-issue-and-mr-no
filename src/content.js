@@ -7,6 +7,11 @@
   const CACHE_DURATION_MS = 60000;
   const HOVER_OPEN_DELAY_MS = 150;
   const HOVER_CLOSE_DELAY_MS = 250;
+  const POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
+  const VIEWPORT_MARGIN = 8;
+  const PANEL_GAP = 6;
+  const DRAG_THRESHOLD = 4;
+  const DEFAULT_POSITION = { edge: 'top', ratio: 0.5 };
   const COPY_ICON_PATHS = [
     'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z',
     'M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z',
@@ -38,6 +43,11 @@
   let renderingNavigationPanel = false;
   let suppressNextFocusOpen = false;
   let suppressTouchFocusOpen = false;
+  let position = { ...DEFAULT_POSITION };
+  let positionLoaded = false;
+  let positionGeneration = 0;
+  let positionFrameId = null;
+  let drag = null;
   const navigation = {
     reference: null,
     projectKey: null,
@@ -170,9 +180,346 @@
   }
 
   function removeBadge() {
+    cancelDrag();
     invalidateCopyOperations();
     clearNavigationTimers();
     root.document.getElementById(HOST_ID)?.remove();
+  }
+
+  function clamp(value, minimum, maximum) {
+    return Math.min(Math.max(value, minimum), maximum);
+  }
+
+  function isValidPosition(value) {
+    return value !== null
+      && typeof value === 'object'
+      && (value.edge === 'top' || value.edge === 'left' || value.edge === 'right')
+      && typeof value.ratio === 'number'
+      && Number.isFinite(value.ratio)
+      && value.ratio >= 0
+      && value.ratio <= 1;
+  }
+
+  function getHostSize(host) {
+    const rect = host.getBoundingClientRect();
+    return {
+      width: Math.min(rect.width, Math.max(0, root.innerWidth - (VIEWPORT_MARGIN * 2))),
+      height: Math.min(rect.height, Math.max(0, root.innerHeight - (VIEWPORT_MARGIN * 2))),
+    };
+  }
+
+  function getPositionPixels(host, snappedPosition) {
+    const { width, height } = getHostSize(host);
+    const horizontalRange = Math.max(0, root.innerWidth - (VIEWPORT_MARGIN * 2) - width);
+    const verticalRange = Math.max(0, root.innerHeight - (VIEWPORT_MARGIN * 2) - height);
+    let left = VIEWPORT_MARGIN;
+    let top = VIEWPORT_MARGIN;
+
+    if (snappedPosition.edge === 'top') {
+      left += horizontalRange * snappedPosition.ratio;
+    } else {
+      top += verticalRange * snappedPosition.ratio;
+      if (snappedPosition.edge === 'right') left += horizontalRange;
+    }
+    return { left, top, width, height };
+  }
+
+  function setPanelPlacement(host, rect, preferredEdge) {
+    const panelWidth = Math.min(380, Math.max(0, root.innerWidth - (VIEWPORT_MARGIN * 2)));
+    const fullPanelHeight = Math.min(560, Math.max(0, root.innerHeight - (VIEWPORT_MARGIN * 2)));
+    const spaceAbove = rect.top - VIEWPORT_MARGIN - PANEL_GAP;
+    const spaceBelow = root.innerHeight - VIEWPORT_MARGIN - rect.top - rect.height - PANEL_GAP;
+    const spaceLeft = rect.left - VIEWPORT_MARGIN - PANEL_GAP;
+    const spaceRight = root.innerWidth
+      - VIEWPORT_MARGIN
+      - rect.left
+      - rect.width
+      - PANEL_GAP;
+    let placement;
+
+    if (preferredEdge === 'top') {
+      placement = 'down';
+    } else if (spaceBelow < 240 && spaceAbove > spaceBelow) {
+      placement = 'up';
+    } else if (spaceAbove < 120 && spaceBelow >= spaceAbove) {
+      placement = 'down';
+    } else if (preferredEdge === 'left' && spaceRight >= panelWidth) {
+      placement = 'right';
+    } else if (preferredEdge === 'right' && spaceLeft >= panelWidth) {
+      placement = 'left';
+    } else {
+      placement = spaceBelow >= spaceAbove ? 'down' : 'up';
+    }
+
+    host.setAttribute('data-panel-placement', placement);
+    if (placement === 'down' || placement === 'up') {
+      const centeredOffset = (rect.width - panelWidth) / 2;
+      const minimumOffset = VIEWPORT_MARGIN - rect.left;
+      const maximumOffset = root.innerWidth
+        - VIEWPORT_MARGIN
+        - panelWidth
+        - rect.left;
+      host.style.setProperty(
+        '--panel-left',
+        `${clamp(centeredOffset, minimumOffset, maximumOffset)}px`,
+      );
+      host.style.setProperty(
+        '--panel-max-height',
+        `${Math.max(0, placement === 'down' ? spaceBelow : spaceAbove)}px`,
+      );
+      return;
+    }
+
+    const centeredOffset = (rect.height - fullPanelHeight) / 2;
+    const minimumOffset = VIEWPORT_MARGIN - rect.top;
+    const maximumOffset = root.innerHeight
+      - VIEWPORT_MARGIN
+      - fullPanelHeight
+      - rect.top;
+    host.style.setProperty(
+      '--panel-top',
+      `${clamp(centeredOffset, minimumOffset, maximumOffset)}px`,
+    );
+    host.style.setProperty('--panel-max-height', `${fullPanelHeight}px`);
+  }
+
+  function setHostPixels(host, left, top, preferredEdge = position.edge) {
+    const { width, height } = getHostSize(host);
+    const constrainedLeft = clamp(
+      left,
+      VIEWPORT_MARGIN,
+      Math.max(VIEWPORT_MARGIN, root.innerWidth - VIEWPORT_MARGIN - width),
+    );
+    const constrainedTop = clamp(
+      top,
+      VIEWPORT_MARGIN,
+      Math.max(VIEWPORT_MARGIN, root.innerHeight - VIEWPORT_MARGIN - height),
+    );
+    host.style.setProperty('--reference-left', `${constrainedLeft}px`);
+    host.style.setProperty('--reference-top', `${constrainedTop}px`);
+    host.style.setProperty('--reference-transform', 'none');
+    setPanelPlacement(
+      host,
+      { left: constrainedLeft, top: constrainedTop, width, height },
+      preferredEdge,
+    );
+    return { left: constrainedLeft, top: constrainedTop, width, height };
+  }
+
+  function applyPosition(host = root.document.getElementById(HOST_ID)) {
+    if (!host) return;
+    const rect = getPositionPixels(host, position);
+    host.setAttribute('data-edge', position.edge);
+    setHostPixels(host, rect.left, rect.top, position.edge);
+  }
+
+  function getStorageArea() {
+    return root.chrome?.storage?.local;
+  }
+
+  function savePosition() {
+    const storage = getStorageArea();
+    if (!storage?.set) return;
+    try {
+      Promise.resolve(storage.set({ [POSITION_STORAGE_KEY]: { ...position } })).catch(() => {});
+    } catch {
+      // Position persistence is optional; dragging still works without it.
+    }
+  }
+
+  function clearStoredPosition() {
+    const storage = getStorageArea();
+    if (!storage?.remove) return;
+    try {
+      Promise.resolve(storage.remove(POSITION_STORAGE_KEY)).catch(() => {});
+    } catch {
+      // Position persistence is optional; reset still applies in this page.
+    }
+  }
+
+  function loadStoredPosition() {
+    if (positionLoaded) return;
+    positionLoaded = true;
+    const storage = getStorageArea();
+    if (!storage?.get) return;
+    const generation = positionGeneration;
+    let pending;
+    try {
+      pending = storage.get(POSITION_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    Promise.resolve(pending).then((stored) => {
+      if (destroyed || generation !== positionGeneration) return;
+      const restored = stored?.[POSITION_STORAGE_KEY];
+      position = isValidPosition(restored) ? { ...restored } : { ...DEFAULT_POSITION };
+      applyPosition();
+    }).catch(() => {});
+  }
+
+  function chooseNearestEdge(rect) {
+    const distances = {
+      top: rect.top - VIEWPORT_MARGIN,
+      left: rect.left - VIEWPORT_MARGIN,
+      right: root.innerWidth - VIEWPORT_MARGIN - rect.left - rect.width,
+    };
+    return Object.keys(distances).reduce(
+      (nearest, edge) => (distances[edge] < distances[nearest] ? edge : nearest),
+      'top',
+    );
+  }
+
+  function snapDrag(host, rect) {
+    const edge = chooseNearestEdge(rect);
+    const range = edge === 'top'
+      ? Math.max(0, root.innerWidth - (VIEWPORT_MARGIN * 2) - rect.width)
+      : Math.max(0, root.innerHeight - (VIEWPORT_MARGIN * 2) - rect.height);
+    const offset = edge === 'top'
+      ? rect.left - VIEWPORT_MARGIN
+      : rect.top - VIEWPORT_MARGIN;
+    position = {
+      edge,
+      ratio: range === 0 ? 0.5 : clamp(offset / range, 0, 1),
+    };
+    applyPosition(host);
+    savePosition();
+  }
+
+  function releaseDragPointer(activeDrag) {
+    if (!activeDrag?.handle?.hasPointerCapture?.(activeDrag.pointerId)) return;
+    try {
+      activeDrag.handle.releasePointerCapture(activeDrag.pointerId);
+    } catch {
+      // The browser may have already released capture after pointer cancellation.
+    }
+  }
+
+  function cancelDrag() {
+    if (!drag) return;
+    const activeDrag = drag;
+    drag = null;
+    releaseDragPointer(activeDrag);
+    activeDrag.host.removeAttribute('data-dragging');
+    if (activeDrag.active && activeDrag.host === root.document.getElementById(HOST_ID)) {
+      position = { ...activeDrag.priorPosition };
+      applyPosition(activeDrag.host);
+    }
+  }
+
+  function handleDragPointerDown(event) {
+    if (drag || event.button !== 0 || event.isPrimary === false) return;
+    const host = root.document.getElementById(HOST_ID);
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    positionGeneration += 1;
+    drag = {
+      pointerId: event.pointerId,
+      handle: event.currentTarget,
+      host,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+      priorPosition: { ...position },
+      active: false,
+      rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.stopPropagation();
+  }
+
+  function handleDragPointerMove(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.active && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) return;
+
+    if (!drag.active) {
+      drag.active = true;
+      clearNavigationTimers();
+      closeNavigation();
+      drag.host.setAttribute('data-dragging', 'true');
+    }
+    drag.rect = setHostPixels(
+      drag.host,
+      drag.startLeft + deltaX,
+      drag.startTop + deltaY,
+      chooseNearestEdge(drag.rect),
+    );
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleDragPointerUp(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const activeDrag = drag;
+    drag = null;
+    releaseDragPointer(activeDrag);
+    activeDrag.host.removeAttribute('data-dragging');
+    if (!activeDrag.active) return;
+    event.preventDefault();
+    event.stopPropagation();
+    snapDrag(activeDrag.host, activeDrag.rect);
+  }
+
+  function handleDragPointerCancel(event) {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    cancelDrag();
+  }
+
+  function handleDragDoubleClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelDrag();
+    positionGeneration += 1;
+    position = { ...DEFAULT_POSITION };
+    applyPosition();
+    clearStoredPosition();
+  }
+
+  function handleDragClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleResize() {
+    if (destroyed || positionFrameId !== null) return;
+    positionFrameId = root.requestAnimationFrame(() => {
+      positionFrameId = null;
+      if (drag?.active) {
+        drag.rect = setHostPixels(
+          drag.host,
+          drag.rect.left,
+          drag.rect.top,
+          chooseNearestEdge(drag.rect),
+        );
+        return;
+      }
+      applyPosition();
+    });
+  }
+
+  function createDragHandleIcon() {
+    const namespace = 'http://www.w3.org/2000/svg';
+    const icon = root.document.createElementNS(namespace, 'svg');
+    icon.setAttribute('data-drag-handle-icon', '');
+    icon.setAttribute('viewBox', '0 0 12 16');
+    icon.setAttribute('width', '12');
+    icon.setAttribute('height', '16');
+    icon.setAttribute('fill', 'currentColor');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.setAttribute('focusable', 'false');
+    for (const x of [4, 8]) {
+      for (const y of [4, 8, 12]) {
+        const dot = root.document.createElementNS(namespace, 'circle');
+        dot.setAttribute('cx', String(x));
+        dot.setAttribute('cy', String(y));
+        dot.setAttribute('r', '1.25');
+        icon.append(dot);
+      }
+    }
+    return icon;
   }
 
   function setIcon(icon, name, pathDataList) {
@@ -206,6 +553,8 @@
     const shadow = host?.shadowRoot;
     return {
       badge: shadow?.querySelector('[data-reference-badge]'),
+      handle: shadow?.querySelector('[data-drag-handle]'),
+      handleTooltip: shadow?.querySelector('[data-drag-tooltip]'),
       trigger: shadow?.querySelector('[data-reference-trigger]'),
       label: shadow?.querySelector('[data-reference-label]'),
       button: shadow?.querySelector('[data-copy-reference]'),
@@ -656,14 +1005,14 @@
       :host {
         all: initial;
         position: fixed !important;
-        top: 8px !important;
-        left: 50% !important;
-        transform: translateX(-50%) !important;
+        top: var(--reference-top) !important;
+        left: var(--reference-left) !important;
+        transform: var(--reference-transform) !important;
         z-index: 2147483647 !important;
         pointer-events: none !important;
         display: block !important;
         width: max-content !important;
-        max-width: calc(100vw - 24px) !important;
+        max-width: calc(100vw - 16px) !important;
       }
 
       [data-reference-badge] {
@@ -682,6 +1031,76 @@
         white-space: nowrap;
       }
 
+      [data-drag-handle] {
+        box-sizing: border-box;
+        position: relative;
+        display: inline-flex;
+        flex: 0 0 26px;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        min-width: 26px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-right: 1px solid rgba(31, 41, 55, 0.2);
+        border-radius: 5px 0 0 5px;
+        background: transparent;
+        color: #6e7781;
+        cursor: grab;
+        pointer-events: auto;
+        touch-action: none;
+        appearance: none;
+      }
+
+      [data-drag-handle]:hover {
+        background: rgba(31, 41, 55, 0.08);
+        color: #24292f;
+      }
+
+      [data-drag-handle]:focus-visible {
+        outline: 2px solid #0969da;
+        outline-offset: -2px;
+      }
+
+      :host([data-dragging]) [data-drag-handle] {
+        cursor: grabbing;
+      }
+
+      [data-drag-handle-icon] {
+        display: block;
+        flex: none;
+      }
+
+      [data-drag-tooltip] {
+        box-sizing: border-box;
+        position: absolute;
+        top: calc(100% + 7px);
+        left: -5px;
+        z-index: 1;
+        width: max-content;
+        max-width: min(220px, calc(100vw - 16px));
+        padding: 5px 8px;
+        border-radius: 6px;
+        background: #24292f;
+        box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
+        color: #ffffff;
+        font: 500 12px/16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        white-space: nowrap;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-2px);
+        transition: opacity 80ms ease, transform 80ms ease, visibility 80ms ease;
+        pointer-events: none;
+      }
+
+      [data-drag-handle]:hover [data-drag-tooltip],
+      [data-drag-handle]:focus-visible [data-drag-tooltip] {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+      }
+
       [data-reference-trigger] {
         box-sizing: border-box;
         display: block;
@@ -690,7 +1109,7 @@
         padding: 0;
         overflow: hidden;
         border: 0;
-        border-radius: 5px 0 0 5px;
+        border-radius: 0;
         background: transparent;
         color: currentColor;
         font: inherit;
@@ -723,11 +1142,8 @@
       [data-open-items-panel] {
         box-sizing: border-box;
         position: absolute;
-        top: calc(100% + 6px);
-        left: 50%;
-        transform: translateX(-50%);
-        width: min(380px, calc(100vw - 24px));
-        max-height: min(560px, calc(100vh - 58px));
+        width: min(380px, calc(100vw - 16px));
+        max-height: var(--panel-max-height);
         overflow: auto;
         border: 1px solid rgba(31, 41, 55, 0.24);
         border-radius: 7px;
@@ -737,6 +1153,26 @@
         font: 400 13px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         white-space: normal;
         pointer-events: auto;
+      }
+
+      :host([data-panel-placement="down"]) [data-open-items-panel] {
+        top: calc(100% + 6px);
+        left: var(--panel-left);
+      }
+
+      :host([data-panel-placement="up"]) [data-open-items-panel] {
+        bottom: calc(100% + 6px);
+        left: var(--panel-left);
+      }
+
+      :host([data-panel-placement="right"]) [data-open-items-panel] {
+        top: var(--panel-top);
+        left: calc(100% + 6px);
+      }
+
+      :host([data-panel-placement="left"]) [data-open-items-panel] {
+        top: var(--panel-top);
+        right: calc(100% + 6px);
       }
 
       [data-open-items-panel][hidden] {
@@ -928,7 +1364,8 @@
         outline-offset: -2px;
       }
 
-      [data-copy-reference][data-copy-state="success"] {
+      [data-copy-reference][data-copy-state="success"],
+      [data-copy-reference][data-copy-state="success"]:hover {
         color: #1f883d;
       }
 
@@ -995,9 +1432,16 @@
           border-left-color: rgba(255, 255, 255, 0.2);
         }
 
+        [data-drag-handle] {
+          border-right-color: rgba(255, 255, 255, 0.2);
+          color: #8b949e;
+        }
+
         [data-reference-trigger]:hover,
-        [data-copy-reference]:hover {
+        [data-copy-reference]:hover,
+        [data-drag-handle]:hover {
           background: rgba(255, 255, 255, 0.1);
+          color: #f0f2f5;
         }
 
         [data-open-items-panel] {
@@ -1061,6 +1505,26 @@
     const badge = root.document.createElement('div');
     badge.setAttribute('data-reference-badge', '');
 
+    const handle = root.document.createElement('button');
+    handle.setAttribute('type', 'button');
+    handle.setAttribute('data-drag-handle', '');
+    handle.setAttribute('aria-label', '拖动调整位置，双击恢复默认位置');
+    handle.setAttribute('aria-describedby', 'gitlab-reference-drag-tooltip');
+    handle.addEventListener('pointerdown', handleDragPointerDown);
+    handle.addEventListener('pointermove', handleDragPointerMove);
+    handle.addEventListener('pointerup', handleDragPointerUp);
+    handle.addEventListener('pointercancel', handleDragPointerCancel);
+    handle.addEventListener('dblclick', handleDragDoubleClick);
+    handle.addEventListener('click', handleDragClick);
+
+    const handleIcon = createDragHandleIcon();
+    const handleTooltip = root.document.createElement('span');
+    handleTooltip.id = 'gitlab-reference-drag-tooltip';
+    handleTooltip.setAttribute('data-drag-tooltip', '');
+    handleTooltip.setAttribute('role', 'tooltip');
+    handleTooltip.textContent = '拖动调整位置';
+    handle.append(handleIcon, handleTooltip);
+
     const trigger = root.document.createElement('button');
     trigger.setAttribute('type', 'button');
     trigger.setAttribute('data-reference-trigger', '');
@@ -1107,11 +1571,12 @@
     panel.addEventListener('keydown', handleNavigationKeydown);
     panel.hidden = true;
 
-    badge.append(trigger, button);
+    badge.append(handle, trigger, button);
     shadow.append(style, badge, panel, announcement);
     shadow.addEventListener('focusout', handleNavigationFocusOut);
     root.document.documentElement.append(host);
     root.document.addEventListener('pointerdown', handleDocumentPointerDown);
+    applyPosition(host);
     return host;
   }
 
@@ -1148,6 +1613,7 @@
     button.setAttribute('data-copy-text', copyText);
     setDefaultFeedback(host, copyText);
     renderNavigationPanel(host);
+    applyPosition(host);
   }
 
   function scheduleSync() {
@@ -1185,6 +1651,12 @@
       root.cancelAnimationFrame(frameId);
       frameId = null;
     }
+    if (positionFrameId !== null) {
+      root.cancelAnimationFrame(positionFrameId);
+      positionFrameId = null;
+    }
+    positionGeneration += 1;
+    cancelDrag();
     observer?.disconnect();
     observer = null;
     for (const eventName of NAVIGATION_EVENTS) {
@@ -1195,11 +1667,13 @@
     }
     root.document.removeEventListener('DOMContentLoaded', handleDocumentReady);
     root.document.removeEventListener('pointerdown', handleDocumentPointerDown);
+    root.removeEventListener('resize', handleResize);
     removeBadge();
   }
 
   function handleDocumentReady() {
     sync();
+    loadStoredPosition();
     startObserver();
   }
 
@@ -1211,6 +1685,7 @@
   }
 
   root.GitLabReferenceBadge = { sync, destroy };
+  root.addEventListener('resize', handleResize);
 
   if (root.document.documentElement) {
     handleDocumentReady();
