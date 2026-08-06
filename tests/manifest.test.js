@@ -26,8 +26,8 @@ test('injects parser and badge scripts on HTTP and HTTPS pages', () => {
   }
 });
 
-test('does not request extension API permissions', () => {
-  assert.deepEqual(manifest.permissions || [], []);
+test('only requests storage permission for the shared control position', () => {
+  assert.deepEqual(manifest.permissions || [], ['storage']);
   assert.deepEqual(manifest.optional_permissions || [], []);
   assert.deepEqual(manifest.host_permissions || [], []);
   assert.deepEqual(manifest.optional_host_permissions || [], []);

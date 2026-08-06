@@ -9,6 +9,7 @@ const parser = require('../src/parser.js');
 const GITHUB_COPY_PATH = 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z';
 const GITHUB_COPY_PATH_FRONT = 'M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z';
 const SUCCESS_PATH = 'M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L3.22 8.28a.75.75 0 0 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z';
+const POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
 
 class FakeEventTarget {
   constructor() {
@@ -28,13 +29,36 @@ class FakeEventTarget {
   dispatchEvent(event) {
     event.target ||= this;
     event.currentTarget = this;
-    event.preventDefault ||= () => {};
-    event.stopPropagation ||= () => {};
+    event.defaultPrevented ||= false;
+    event.propagationStopped ||= false;
+    event.preventDefault ||= () => {
+      event.defaultPrevented = true;
+    };
+    event.stopPropagation ||= () => {
+      event.propagationStopped = true;
+    };
     for (const listener of this.listeners.get(event.type) || []) {
       listener.call(this, event);
     }
     return true;
   }
+}
+
+function createFakeStyle() {
+  const values = new Map();
+  return {
+    setProperty(name, value) {
+      values.set(name, String(value));
+    },
+    getPropertyValue(name) {
+      return values.get(name) || '';
+    },
+    removeProperty(name) {
+      const value = values.get(name) || '';
+      values.delete(name);
+      return value;
+    },
+  };
 }
 
 function matchesSelector(node, selector) {
@@ -62,10 +86,12 @@ class FakeNode extends FakeEventTarget {
     this.textContent = '';
     this.shadowRoot = null;
     this.hidden = false;
-    this.style = {};
+    this.style = createFakeStyle();
     this.value = '';
     this.selected = false;
     this.ownerDocument = null;
+    this.rect = { left: 0, top: 0, width: 160, height: 30 };
+    this.capturedPointerIds = new Set();
   }
 
   append(...nodes) {
@@ -154,6 +180,40 @@ class FakeNode extends FakeEventTarget {
   select() {
     this.selected = true;
   }
+
+  matches(selector) {
+    return matchesSelector(this, selector);
+  }
+
+  getBoundingClientRect() {
+    const { left, top, width, height } = this.rect;
+    return {
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+      x: left,
+      y: top,
+    };
+  }
+
+  setBoundingClientRect(rect) {
+    this.rect = { ...this.rect, ...rect };
+  }
+
+  setPointerCapture(pointerId) {
+    this.capturedPointerIds.add(pointerId);
+  }
+
+  releasePointerCapture(pointerId) {
+    this.capturedPointerIds.delete(pointerId);
+  }
+
+  hasPointerCapture(pointerId) {
+    return this.capturedPointerIds.has(pointerId);
+  }
 }
 
 class FakeDocument extends FakeEventTarget {
@@ -226,6 +286,10 @@ function createHarness(initialUrl, options = {}) {
   const clipboardWrites = [];
   const execCommandCalls = [];
   const fetchCalls = [];
+  const storageCalls = { get: [], set: [], remove: [] };
+  const storageData = { ...(options.storageData || {}) };
+  let innerWidth = options.innerWidth || 1280;
+  let innerHeight = options.innerHeight || 800;
   let nextFrameId = 1;
   let nextTimerId = 1;
   let now = 0;
@@ -289,6 +353,28 @@ function createHarness(initialUrl, options = {}) {
     }
   }
 
+  const storage = options.storage === false ? undefined : {
+    local: {
+      get(key) {
+        storageCalls.get.push(key);
+        if (options.storageGetError) return Promise.reject(options.storageGetError);
+        return Promise.resolve({ [key]: storageData[key] });
+      },
+      set(value) {
+        storageCalls.set.push(value);
+        if (options.storageSetError) return Promise.reject(options.storageSetError);
+        Object.assign(storageData, value);
+        return Promise.resolve();
+      },
+      remove(key) {
+        storageCalls.remove.push(key);
+        if (options.storageRemoveError) return Promise.reject(options.storageRemoveError);
+        delete storageData[key];
+        return Promise.resolve();
+      },
+    },
+  };
+
   const context = {
     GitLabReferenceParser: parser,
     MutationObserver: FakeMutationObserver,
@@ -296,8 +382,15 @@ function createHarness(initialUrl, options = {}) {
     fetch,
     location,
     navigator: clipboard ? { clipboard } : {},
+    chrome: storage ? { storage } : {},
     Date: FakeDate,
     URL,
+    get innerWidth() {
+      return innerWidth;
+    },
+    get innerHeight() {
+      return innerHeight;
+    },
     addEventListener: windowEvents.addEventListener.bind(windowEvents),
     removeEventListener: windowEvents.removeEventListener.bind(windowEvents),
     requestAnimationFrame(callback) {
@@ -327,8 +420,10 @@ function createHarness(initialUrl, options = {}) {
     clipboardWrites,
     execCommandCalls,
     fetchCalls,
-    dispatchWindow(type) {
-      windowEvents.dispatchEvent({ type });
+    storageCalls,
+    storageData,
+    dispatchWindow(type, overrides = {}) {
+      windowEvents.dispatchEvent({ type, ...overrides });
     },
     dispatchDocument(type) {
       document.dispatchEvent({ type });
@@ -362,6 +457,10 @@ function createHarness(initialUrl, options = {}) {
         }
       }
     },
+    setViewport(width, height) {
+      innerWidth = width;
+      innerHeight = height;
+    },
   };
 }
 
@@ -373,6 +472,9 @@ function getBadge(document) {
     badge: shadow?.querySelector('[data-reference-badge]') || null,
     trigger: shadow?.querySelector('[data-reference-trigger]') || null,
     label: shadow?.querySelector('[data-reference-label]') || null,
+    handle: shadow?.querySelector('[data-drag-handle]') || null,
+    handleIcon: shadow?.querySelector('[data-drag-handle-icon]') || null,
+    handleTooltip: shadow?.querySelector('[data-drag-tooltip]') || null,
     button: shadow?.querySelector('[data-copy-reference]') || null,
     tooltip: shadow?.querySelector('[data-copy-tooltip]') || null,
     icon: shadow?.querySelector('[data-copy-icon]') || null,
@@ -386,6 +488,25 @@ function getBadge(document) {
 function renderedText(node) {
   if (!node) return '';
   return `${node.textContent}${node.children.map(renderedText).join('')}`;
+}
+
+function dispatchPointer(node, type, clientX, clientY, overrides = {}) {
+  const event = {
+    type,
+    button: 0,
+    isPrimary: true,
+    pointerId: 7,
+    pointerType: 'mouse',
+    clientX,
+    clientY,
+    ...overrides,
+  };
+  node.dispatchEvent(event);
+  return event;
+}
+
+function readPixelStyle(node, property) {
+  return Number.parseFloat(node.style.getPropertyValue(property));
 }
 
 async function openAndLoad(harness) {
@@ -427,14 +548,206 @@ test('keeps rendering idempotent and declares passive label with an interactive 
 
   assert.equal(hosts.length, 1);
   assert.match(rendered.style.textContent, /position:\s*fixed\s*!important/);
-  assert.match(rendered.style.textContent, /top:\s*8px\s*!important/);
+  assert.match(rendered.style.textContent, /top:\s*var\(--reference-top\)\s*!important/);
+  assert.match(rendered.style.textContent, /left:\s*var\(--reference-left\)\s*!important/);
   assert.match(rendered.style.textContent, /pointer-events:\s*none\s*!important/);
   assert.match(rendered.style.textContent, /\[data-copy-reference\][\s\S]*pointer-events:\s*auto/);
   assert.match(
     rendered.style.textContent,
-    /\[data-open-items-panel\][\s\S]*left:\s*50%[\s\S]*transform:\s*translateX\(-50%\)/,
+    /data-panel-placement="down"[\s\S]*top:\s*calc\(100% \+ 6px\)/,
   );
   assert.match(rendered.style.textContent, /z-index:\s*2147483647\s*!important/);
+});
+
+test('renders an accessible six-dot drag handle with grab affordances', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123');
+  const rendered = getBadge(harness.document);
+
+  assert.equal(rendered.handle.tagName, 'BUTTON');
+  assert.equal(rendered.handle.getAttribute('type'), 'button');
+  assert.equal(rendered.handle.getAttribute('aria-label'), '拖动调整位置，双击恢复默认位置');
+  assert.equal(rendered.handleTooltip.textContent, '拖动调整位置');
+  assert.equal(rendered.handleIcon.tagName, 'SVG');
+  assert.equal(rendered.handleIcon.querySelectorAll('circle').length, 6);
+  assert.match(rendered.style.textContent, /\[data-drag-handle\][\s\S]*cursor:\s*grab/);
+  assert.match(rendered.style.textContent, /data-dragging[\s\S]*cursor:\s*grabbing/);
+  assert.match(rendered.style.textContent, /touch-action:\s*none/);
+});
+
+test('ignores movement below the drag threshold without opening, copying, or saving', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123');
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 8, width: 160, height: 30 });
+
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 20);
+  assert.equal(rendered.handle.hasPointerCapture(7), true);
+  const move = dispatchPointer(rendered.handle, 'pointermove', 571, 22);
+  dispatchPointer(rendered.handle, 'pointerup', 571, 22);
+  rendered.handle.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+
+  assert.equal(move.defaultPrevented, false);
+  assert.equal(rendered.handle.hasPointerCapture(7), false);
+  assert.equal(rendered.host.getAttribute('data-dragging'), null);
+  assert.equal(rendered.panel.hidden, true);
+  assert.deepEqual(harness.clipboardWrites, []);
+  assert.deepEqual(harness.fetchCalls, []);
+  assert.equal(harness.storageCalls.set.length, 0);
+});
+
+test('drags freely, closes navigation, then snaps right and saves a normalized position', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123');
+  await harness.flushMicrotasks();
+  let rendered = getBadge(harness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 8, width: 160, height: 30 });
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  assert.equal(rendered.panel.hidden, false);
+
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 20);
+  const move = dispatchPointer(rendered.handle, 'pointermove', 1200, 310);
+
+  assert.equal(move.defaultPrevented, true);
+  assert.equal(rendered.host.getAttribute('data-dragging'), 'true');
+  assert.equal(rendered.panel.hidden, true);
+  assert.equal(rendered.handle.hasPointerCapture(7), true);
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 1112);
+  assert.ok(readPixelStyle(rendered.host, '--reference-top') > 250);
+
+  dispatchPointer(rendered.handle, 'pointerup', 1200, 310);
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+
+  assert.equal(rendered.host.getAttribute('data-dragging'), null);
+  assert.equal(rendered.host.getAttribute('data-edge'), 'right');
+  assert.equal(rendered.handle.hasPointerCapture(7), false);
+  assert.equal(harness.storageCalls.set.length, 1);
+  const saved = harness.storageCalls.set[0][POSITION_STORAGE_KEY];
+  assert.equal(saved.edge, 'right');
+  assert.ok(saved.ratio > 0 && saved.ratio < 1);
+});
+
+test('snaps to the nearest top or left edge', async () => {
+  const topHarness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  await topHarness.flushMicrotasks();
+  let rendered = getBadge(topHarness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 300, width: 160, height: 30 });
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 312);
+  dispatchPointer(rendered.handle, 'pointermove', 900, 12);
+  dispatchPointer(rendered.handle, 'pointerup', 900, 12);
+  await topHarness.flushMicrotasks();
+  assert.equal(rendered.host.getAttribute('data-edge'), 'top');
+  assert.equal(readPixelStyle(rendered.host, '--reference-top'), 8);
+
+  const leftHarness = createHarness('https://gitlab.com/acme/platform/-/issues/2');
+  await leftHarness.flushMicrotasks();
+  rendered = getBadge(leftHarness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 300, width: 160, height: 30 });
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 312);
+  dispatchPointer(rendered.handle, 'pointermove', 12, 500);
+  dispatchPointer(rendered.handle, 'pointerup', 12, 500);
+  await leftHarness.flushMicrotasks();
+  assert.equal(rendered.host.getAttribute('data-edge'), 'left');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 8);
+});
+
+test('restores a shared stored position and falls back from invalid data', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    storageData: {
+      [POSITION_STORAGE_KEY]: { edge: 'right', ratio: 0.25 },
+    },
+  });
+  await harness.flushMicrotasks();
+  let rendered = getBadge(harness.document);
+
+  assert.deepEqual(harness.storageCalls.get, [POSITION_STORAGE_KEY]);
+  assert.equal(rendered.host.getAttribute('data-edge'), 'right');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 1112);
+  assert.equal(readPixelStyle(rendered.host, '--reference-top'), 196.5);
+
+  const invalidHarness = createHarness('https://gitlab.com/other/project/-/issues/2', {
+    storageData: {
+      [POSITION_STORAGE_KEY]: { edge: 'bottom', ratio: 3 },
+    },
+  });
+  await invalidHarness.flushMicrotasks();
+  rendered = getBadge(invalidHarness.document);
+  assert.equal(rendered.host.getAttribute('data-edge'), 'top');
+  assert.equal(readPixelStyle(rendered.host, '--reference-top'), 8);
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 560);
+});
+
+test('double-clicking the handle clears storage and restores top center', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    storageData: {
+      [POSITION_STORAGE_KEY]: { edge: 'left', ratio: 0.8 },
+    },
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  rendered.handle.dispatchEvent({ type: 'dblclick' });
+  await harness.flushMicrotasks();
+
+  assert.deepEqual(harness.storageCalls.remove, [POSITION_STORAGE_KEY]);
+  assert.equal(rendered.host.getAttribute('data-edge'), 'top');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 560);
+  assert.equal(readPixelStyle(rendered.host, '--reference-top'), 8);
+});
+
+test('reconstrains the control on resize and chooses an inward panel direction', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    storageData: {
+      [POSITION_STORAGE_KEY]: { edge: 'right', ratio: 1 },
+    },
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.host.getAttribute('data-panel-placement'), 'up');
+
+  harness.setViewport(320, 200);
+  harness.dispatchWindow('resize');
+  harness.flushAnimationFrames();
+
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 152);
+  assert.equal(readPixelStyle(rendered.host, '--reference-top'), 162);
+  assert.equal(rendered.host.getAttribute('data-panel-placement'), 'up');
+  assert.match(rendered.style.textContent, /data-panel-placement="up"[\s\S]*bottom:\s*calc\(100% \+ 6px\)/);
+  assert.match(rendered.style.textContent, /data-panel-placement="right"[\s\S]*left:\s*calc\(100% \+ 6px\)/);
+  assert.match(rendered.style.textContent, /data-panel-placement="left"[\s\S]*right:\s*calc\(100% \+ 6px\)/);
+});
+
+test('pointer cancellation restores the prior snapped position without saving', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 8, width: 160, height: 30 });
+
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 20);
+  dispatchPointer(rendered.handle, 'pointermove', 12, 500);
+  dispatchPointer(rendered.handle, 'pointercancel', 12, 500);
+
+  assert.equal(rendered.host.getAttribute('data-edge'), 'top');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 560);
+  assert.equal(readPixelStyle(rendered.host, '--reference-top'), 8);
+  assert.equal(rendered.handle.hasPointerCapture(7), false);
+  assert.equal(harness.storageCalls.set.length, 0);
+});
+
+test('destroy releases an active drag and removes resize behavior', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 8, width: 160, height: 30 });
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 20);
+  dispatchPointer(rendered.handle, 'pointermove', 12, 500);
+  assert.equal(rendered.handle.hasPointerCapture(7), true);
+
+  harness.context.GitLabReferenceBadge.destroy();
+  assert.equal(rendered.handle.hasPointerCapture(7), false);
+  harness.setViewport(320, 200);
+  harness.dispatchWindow('resize');
+  harness.flushAnimationFrames();
+  assert.equal(getBadge(harness.document).host, null);
 });
 
 test('copies an Issue reference and restores the default state after 1500ms', async () => {
