@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const parser = require('../src/parser.js');
 
+const CONFIG_STORAGE_KEY = 'gitlabReferenceConfig';
 const GITHUB_COPY_PATH = 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z';
 const GITHUB_COPY_PATH_FRONT = 'M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z';
 const SUCCESS_PATH = 'M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L3.22 8.28a.75.75 0 0 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z';
@@ -277,6 +278,7 @@ function jsonResponse(body, options = {}) {
 }
 
 function createHarness(initialUrl, options = {}) {
+  const configSource = fs.readFileSync(path.join(__dirname, '../src/config.js'), 'utf8');
   const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
   const windowEvents = new FakeEventTarget();
   const location = { href: initialUrl };
@@ -358,7 +360,8 @@ function createHarness(initialUrl, options = {}) {
       get(key) {
         storageCalls.get.push(key);
         if (options.storageGetError) return Promise.reject(options.storageGetError);
-        return Promise.resolve({ [key]: storageData[key] });
+        const keys = Array.isArray(key) ? key : [key];
+        return Promise.resolve(Object.fromEntries(keys.map((name) => [name, storageData[name]])));
       },
       set(value) {
         storageCalls.set.push(value);
@@ -411,6 +414,7 @@ function createHarness(initialUrl, options = {}) {
     },
   };
 
+  vm.runInNewContext(configSource, context, { filename: 'src/config.js' });
   vm.runInNewContext(source, context, { filename: 'src/content.js' });
 
   return {
@@ -622,7 +626,7 @@ test('drags freely, closes navigation, then snaps right and saves a normalized p
   assert.equal(rendered.host.getAttribute('data-edge'), 'right');
   assert.equal(rendered.handle.hasPointerCapture(7), false);
   assert.equal(harness.storageCalls.set.length, 1);
-  const saved = harness.storageCalls.set[0][POSITION_STORAGE_KEY];
+  const saved = harness.storageCalls.set[0][CONFIG_STORAGE_KEY].position;
   assert.equal(saved.edge, 'right');
   assert.ok(saved.ratio > 0 && saved.ratio < 1);
 });
@@ -660,7 +664,10 @@ test('restores a shared stored position and falls back from invalid data', async
   await harness.flushMicrotasks();
   let rendered = getBadge(harness.document);
 
-  assert.deepEqual(harness.storageCalls.get, [POSITION_STORAGE_KEY]);
+  assert.deepEqual(
+    harness.storageCalls.get.map((keys) => [...keys]),
+    [[CONFIG_STORAGE_KEY, POSITION_STORAGE_KEY]],
+  );
   assert.equal(rendered.host.getAttribute('data-edge'), 'right');
   assert.equal(readPixelStyle(rendered.host, '--reference-left'), 1112);
   assert.equal(readPixelStyle(rendered.host, '--reference-top'), 196.5);
@@ -680,7 +687,10 @@ test('restores a shared stored position and falls back from invalid data', async
 test('double-clicking the handle clears storage and restores top center', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
     storageData: {
-      [POSITION_STORAGE_KEY]: { edge: 'left', ratio: 0.8 },
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        position: { edge: 'left', ratio: 0.8 },
+      },
     },
   });
   await harness.flushMicrotasks();
@@ -697,7 +707,10 @@ test('double-clicking the handle clears storage and restores top center', async 
 test('reconstrains the control on resize and chooses an inward panel direction', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
     storageData: {
-      [POSITION_STORAGE_KEY]: { edge: 'right', ratio: 1 },
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        position: { edge: 'right', ratio: 1 },
+      },
     },
   });
   await harness.flushMicrotasks();
@@ -1020,6 +1033,100 @@ test('loads Open items with encoded project API URLs, pagination, and current se
   );
 });
 
+test('applies list filter and per-type item limit from the configuration layer', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        user: { listFilter: 'issue', maxItemsPerType: 1 },
+      },
+    },
+    fetchResults: [jsonResponse([
+      { iid: 15, title: 'Current issue' },
+      { iid: 16, title: 'Second issue' },
+    ])],
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(harness.fetchCalls.length, 1);
+  assert.match(harness.fetchCalls[0].url, /issues\?[^#]*per_page=1/);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 1);
+  assert.equal(rendered.panel.querySelector('[data-open-items-group]').getAttribute('data-open-items-group'), 'issues');
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 1);
+});
+
+test('loads configured item groups sequentially', async () => {
+  const issueResponse = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        user: { loadingMode: 'sequential' },
+      },
+    },
+    fetchResults: [issueResponse, jsonResponse([{ iid: 8, title: 'Open MR' }])],
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(harness.fetchCalls.length, 1);
+  assert.match(harness.fetchCalls[0].url, /\/issues\?/);
+  issueResponse.resolve(jsonResponse([{ iid: 15, title: 'Current issue' }]));
+  await harness.flushMicrotasks();
+
+  assert.equal(harness.fetchCalls.length, 2);
+  assert.match(harness.fetchCalls[1].url, /\/merge_requests\?/);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+});
+
+test('renders last refresh time only when enabled', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        user: { showLastRefresh: false },
+      },
+    },
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelector('[data-last-refresh]'), null);
+  assert.equal(rendered.refresh.getAttribute('aria-busy'), 'false');
+});
+
+test('configuration load failures keep the reference control available', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageGetError: new Error('storage unavailable'),
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.label.textContent, 'Issue #15');
+  assert.equal(rendered.button.getAttribute('data-copy-text'), '#15');
+});
+
+test('disables touch dragging and uses the configured keyboard step', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        user: { touchDrag: false, keyboardStep: 20 },
+      },
+    },
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.host.getAttribute('data-touch-drag'), 'false');
+
+  const touchDown = dispatchPointer(rendered.handle, 'pointerdown', 568, 20, {
+    pointerType: 'touch',
+  });
+  assert.equal(rendered.handle.hasPointerCapture(7), false);
+  assert.equal(touchDown.propagationStopped, false);
+
+  rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 580);
+});
+
 test('reuses a complete snapshot for 60 seconds and refreshes expired data', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
     fetchResults: [
@@ -1069,6 +1176,7 @@ test('shows a successful group on initial partial failure without caching it', a
   assert.match(renderedText(groups[1]), /Available MR/);
 
   rendered.refresh.dispatchEvent({ type: 'click' });
+  assert.equal(rendered.panel.hidden, false);
   await harness.flushMicrotasks();
   rendered = getBadge(harness.document);
   assert.equal(harness.fetchCalls.length, 4);
@@ -1232,6 +1340,8 @@ test('ignores stale project results after navigating to another project', async 
   });
 
   getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  assert.equal(harness.fetchCalls.length, 2);
   harness.location.href = 'https://gitlab.com/acme/new-app/-/issues/7';
   harness.dispatchWindow('popstate');
   harness.flushAnimationFrames();

@@ -13,12 +13,12 @@ test('declares a loadable Manifest V3 extension', () => {
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 });
 
-test('injects parser and badge scripts on HTTP and HTTPS pages', () => {
+test('injects parser, configuration, and badge scripts on HTTP and HTTPS pages', () => {
   assert.equal(manifest.content_scripts.length, 1);
 
   const [contentScript] = manifest.content_scripts;
   assert.deepEqual(contentScript.matches, ['http://*/*', 'https://*/*']);
-  assert.deepEqual(contentScript.js, ['src/parser.js', 'src/content.js']);
+  assert.deepEqual(contentScript.js, ['src/parser.js', 'src/config.js', 'src/content.js']);
   assert.equal(contentScript.run_at, 'document_start');
 
   for (const scriptPath of contentScript.js) {
@@ -26,11 +26,22 @@ test('injects parser and badge scripts on HTTP and HTTPS pages', () => {
   }
 });
 
-test('only requests storage permission for the shared control position', () => {
+test('only requests storage permission for local preferences and control position', () => {
   assert.deepEqual(manifest.permissions || [], ['storage']);
   assert.deepEqual(manifest.optional_permissions || [], []);
   assert.deepEqual(manifest.host_permissions || [], []);
   assert.deepEqual(manifest.optional_host_permissions || [], []);
+});
+
+test('provides a keyboard-accessible settings page', () => {
+  assert.equal(manifest.options_ui?.page, 'src/options.html');
+  assert.equal(manifest.options_ui?.open_in_tab, true);
+
+  const optionsHtml = fs.readFileSync(path.join(projectRoot, 'src/options.html'), 'utf8');
+  assert.match(optionsHtml, /<form id="settings-form"/);
+  assert.match(optionsHtml, /<script src="config\.js"><\/script>/);
+  assert.match(optionsHtml, /<script src="options\.js"><\/script>/);
+  assert.equal(fs.statSync(path.join(projectRoot, 'src/options.css')).isFile(), true);
 });
 
 test('provides correctly sized RGBA PNG icons', () => {

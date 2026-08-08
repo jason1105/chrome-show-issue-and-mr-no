@@ -4,14 +4,11 @@
   const HOST_ID = 'gitlab-reference-badge-host';
   const PANEL_ID = 'gitlab-open-items-panel';
   const FEEDBACK_DURATION_MS = 1500;
-  const CACHE_DURATION_MS = 60000;
   const HOVER_OPEN_DELAY_MS = 150;
   const HOVER_CLOSE_DELAY_MS = 250;
-  const POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
   const VIEWPORT_MARGIN = 8;
   const PANEL_GAP = 6;
   const DRAG_THRESHOLD = 4;
-  const DEFAULT_POSITION = { edge: 'top', ratio: 0.5 };
   const COPY_ICON_PATHS = [
     'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z',
     'M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z',
@@ -27,8 +24,32 @@
     'gl:page:load',
   ];
   const parseGitLabReference = root.GitLabReferenceParser?.parseGitLabReference;
+  const configApi = root.GitLabReferenceConfig;
+  const DEFAULT_POSITION = configApi?.DEFAULT_POSITION || { edge: 'top', ratio: 0.5 };
+  const initialOrigin = (() => {
+    try {
+      return new root.URL(root.location.href).origin;
+    } catch {
+      return '';
+    }
+  })();
+  const defaultConfig = configApi?.getEffectiveConfig
+    ? configApi.getEffectiveConfig(configApi.getDefaultConfig(), initialOrigin)
+    : {
+      listFilter: 'all',
+      cacheTtlSeconds: 60,
+      maxItemsPerType: 100,
+      loadingMode: 'parallel',
+      showLastRefresh: true,
+      touchDrag: true,
+      keyboardStep: 8,
+      position: { ...DEFAULT_POSITION },
+    };
 
-  if (typeof parseGitLabReference !== 'function') {
+  if (
+    typeof parseGitLabReference !== 'function'
+    || typeof configApi?.createConfigStore !== 'function'
+  ) {
     return;
   }
 
@@ -48,6 +69,11 @@
   let positionGeneration = 0;
   let positionFrameId = null;
   let drag = null;
+  let activeConfig = { ...defaultConfig, position: { ...defaultConfig.position } };
+  const configStore = configApi.createConfigStore(root.chrome?.storage?.local);
+  let configOrigin = initialOrigin;
+  let configurationReady = Promise.resolve();
+  let configurationGeneration = 0;
   const navigation = {
     reference: null,
     projectKey: null,
@@ -58,6 +84,7 @@
     errors: { issues: false, mergeRequests: false },
     message: '',
     cache: null,
+    lastLoadedAt: null,
     requestGeneration: 0,
     pending: null,
   };
@@ -78,10 +105,34 @@
     return `${reference.origin}/${reference.projectPath}`;
   }
 
-  function buildItemsApiUrl(reference, resource, page) {
+  function getCurrentOrigin() {
+    try {
+      return new root.URL(root.location.href).origin;
+    } catch {
+      return '';
+    }
+  }
+
+  function getVisibleKinds() {
+    if (activeConfig.listFilter === 'issue') return ['issue'];
+    if (activeConfig.listFilter === 'merge-request') return ['merge-request'];
+    return ['issue', 'merge-request'];
+  }
+
+  function isVisibleKind(kind) {
+    return getVisibleKinds().includes(kind);
+  }
+
+  function isCurrentCache() {
+    return navigation.cache?.key === navigation.projectKey
+      && navigation.cache?.listFilter === activeConfig.listFilter
+      && navigation.cache?.maxItemsPerType === activeConfig.maxItemsPerType;
+  }
+
+  function buildItemsApiUrl(reference, resource, page, perPage) {
     const encodedProject = encodeURIComponent(reference.projectPath);
     return `${reference.origin}/api/v4/projects/${encodedProject}/${resource}`
-      + '?state=opened&scope=all&order_by=updated_at&sort=desc&per_page=100'
+      + `?state=opened&scope=all&order_by=updated_at&sort=desc&per_page=${perPage}`
       + `&page=${page}`;
   }
 
@@ -96,6 +147,11 @@
 
   async function fetchAllItems(reference, kind) {
     const resource = kind === 'issue' ? 'issues' : 'merge_requests';
+    const limit = Math.min(
+      activeConfig.maxItemsPerType,
+      activeConfig.protected?.maxItemsPerType || 100,
+    );
+    const perPage = Math.min(limit, activeConfig.protected?.maxItemsPerPage || 100);
     const items = [];
     const visitedPages = new Set();
     let page = '1';
@@ -104,7 +160,7 @@
       if (visitedPages.has(page)) throw new Error('Invalid GitLab pagination');
       visitedPages.add(page);
 
-      const response = await root.fetch(buildItemsApiUrl(reference, resource, page), {
+      const response = await root.fetch(buildItemsApiUrl(reference, resource, page, perPage), {
         credentials: 'same-origin',
         headers: { accept: 'application/json' },
       });
@@ -124,7 +180,10 @@
             ? item.web_url
             : buildFallbackWebUrl(reference, kind, iid),
         });
+        if (items.length >= limit) break;
       }
+
+      if (items.length >= limit) break;
 
       const nextPage = response.headers?.get('X-Next-Page') || '';
       if (nextPage && !/^[1-9][0-9]*$/.test(nextPage)) {
@@ -176,6 +235,7 @@
     navigation.errors = { issues: false, mergeRequests: false };
     navigation.message = '';
     navigation.pending = null;
+    navigation.lastLoadedAt = null;
     if (clearCache) navigation.cache = null;
   }
 
@@ -188,16 +248,6 @@
 
   function clamp(value, minimum, maximum) {
     return Math.min(Math.max(value, minimum), maximum);
-  }
-
-  function isValidPosition(value) {
-    return value !== null
-      && typeof value === 'object'
-      && (value.edge === 'top' || value.edge === 'left' || value.edge === 'right')
-      && typeof value.ratio === 'number'
-      && Number.isFinite(value.ratio)
-      && value.ratio >= 0
-      && value.ratio <= 1;
   }
 
   function getHostSize(host) {
@@ -313,46 +363,24 @@
     setHostPixels(host, rect.left, rect.top, position.edge);
   }
 
-  function getStorageArea() {
-    return root.chrome?.storage?.local;
-  }
-
   function savePosition() {
-    const storage = getStorageArea();
-    if (!storage?.set) return;
-    try {
-      Promise.resolve(storage.set({ [POSITION_STORAGE_KEY]: { ...position } })).catch(() => {});
-    } catch {
-      // Position persistence is optional; dragging still works without it.
-    }
+    const generation = positionGeneration;
+    Promise.resolve(configStore.setPosition(position, configOrigin)).catch(() => {
+      if (destroyed || generation !== positionGeneration) return;
+    });
   }
 
   function clearStoredPosition() {
-    const storage = getStorageArea();
-    if (!storage?.remove) return;
-    try {
-      Promise.resolve(storage.remove(POSITION_STORAGE_KEY)).catch(() => {});
-    } catch {
-      // Position persistence is optional; reset still applies in this page.
-    }
+    Promise.resolve(configStore.resetPosition(configOrigin)).catch(() => {});
   }
 
   function loadStoredPosition() {
     if (positionLoaded) return;
     positionLoaded = true;
-    const storage = getStorageArea();
-    if (!storage?.get) return;
     const generation = positionGeneration;
-    let pending;
-    try {
-      pending = storage.get(POSITION_STORAGE_KEY);
-    } catch {
-      return;
-    }
-    Promise.resolve(pending).then((stored) => {
+    Promise.resolve(configurationReady).then(() => {
       if (destroyed || generation !== positionGeneration) return;
-      const restored = stored?.[POSITION_STORAGE_KEY];
-      position = isValidPosition(restored) ? { ...restored } : { ...DEFAULT_POSITION };
+      position = configApi.normalizePosition(activeConfig.position);
       applyPosition();
     }).catch(() => {});
   }
@@ -407,7 +435,12 @@
   }
 
   function handleDragPointerDown(event) {
-    if (drag || event.button !== 0 || event.isPrimary === false) return;
+    if (
+      drag
+      || event.button !== 0
+      || event.isPrimary === false
+      || (event.pointerType === 'touch' && !activeConfig.touchDrag)
+    ) return;
     const host = root.document.getElementById(HOST_ID);
     if (!host) return;
     const rect = host.getBoundingClientRect();
@@ -481,6 +514,36 @@
   function handleDragClick(event) {
     event.preventDefault();
     event.stopPropagation();
+  }
+
+  function handleDragKeydown(event) {
+    const horizontal = position.edge === 'top';
+    const direction = horizontal
+      ? (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0)
+      : (event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0);
+    if (!direction) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const host = root.document.getElementById(HOST_ID);
+    if (!host) return;
+    const { width, height } = getHostSize(host);
+    const range = horizontal
+      ? Math.max(0, root.innerWidth - (VIEWPORT_MARGIN * 2) - width)
+      : Math.max(0, root.innerHeight - (VIEWPORT_MARGIN * 2) - height);
+    if (range === 0) return;
+
+    positionGeneration += 1;
+    position = {
+      ...position,
+      ratio: clamp(
+        position.ratio + (direction * activeConfig.keyboardStep) / range,
+        0,
+        1,
+      ),
+    };
+    applyPosition(host);
+    savePosition();
   }
 
   function handleResize() {
@@ -754,6 +817,19 @@
     return group;
   }
 
+  function formatLastRefresh(timestamp) {
+    if (!Number.isFinite(timestamp)) return '';
+    try {
+      return new root.Date(timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    } catch {
+      return '';
+    }
+  }
+
   function renderNavigationPanel(host) {
     const { panel, trigger } = getBadgeParts(host);
     if (!panel || !trigger) return;
@@ -772,9 +848,18 @@
     const total = root.document.createElement('span');
     total.setAttribute('data-open-items-total', '');
     total.textContent = String(
-      (navigation.issues?.length || 0) + (navigation.mergeRequests?.length || 0),
+      (isVisibleKind('issue') ? navigation.issues?.length || 0 : 0)
+      + (isVisibleKind('merge-request') ? navigation.mergeRequests?.length || 0 : 0),
     );
     heading.append(headingText, total);
+
+    if (activeConfig.showLastRefresh && Number.isFinite(navigation.lastLoadedAt)) {
+      const lastRefresh = root.document.createElement('time');
+      lastRefresh.setAttribute('data-last-refresh', '');
+      lastRefresh.setAttribute('datetime', new root.Date(navigation.lastLoadedAt).toISOString());
+      lastRefresh.textContent = `更新于 ${formatLastRefresh(navigation.lastLoadedAt)}`;
+      heading.append(lastRefresh);
+    }
 
     const refresh = root.document.createElement('button');
     refresh.setAttribute('type', 'button');
@@ -796,14 +881,16 @@
       message.textContent = navigation.message;
       children.push(message);
     }
-    children.push(
-      createOpenItemsGroup('issues', navigation.issues, navigation.errors.issues),
-      createOpenItemsGroup(
+    if (isVisibleKind('issue')) {
+      children.push(createOpenItemsGroup('issues', navigation.issues, navigation.errors.issues));
+    }
+    if (isVisibleKind('merge-request')) {
+      children.push(createOpenItemsGroup(
         'merge-requests',
         navigation.mergeRequests,
         navigation.errors.mergeRequests,
-      ),
-    );
+      ));
+    }
     renderingNavigationPanel = true;
     try {
       panel.replaceChildren(...children);
@@ -821,15 +908,22 @@
   }
 
   async function loadOpenItems({ force = false } = {}) {
+    const requestedProjectKey = navigation.projectKey;
+    await configurationReady;
+    if (
+      destroyed
+      || requestedProjectKey !== navigation.projectKey
+    ) return;
     const reference = navigation.reference;
-    const projectKey = navigation.projectKey;
+    const projectKey = requestedProjectKey;
     const host = root.document.getElementById(HOST_ID);
     if (!reference || !projectKey || !host) return;
 
-    if (!force && navigation.cache?.key === projectKey) {
+    if (!force && isCurrentCache()) {
       navigation.issues = navigation.cache.issues;
       navigation.mergeRequests = navigation.cache.mergeRequests;
-      if (root.Date.now() - navigation.cache.loadedAt < CACHE_DURATION_MS) {
+      navigation.lastLoadedAt = navigation.cache.loadedAt;
+      if (root.Date.now() - navigation.cache.loadedAt < activeConfig.cacheTtlSeconds * 1000) {
         navigation.errors = { issues: false, mergeRequests: false };
         navigation.message = '';
         renderNavigationPanel(host);
@@ -839,7 +933,7 @@
 
     if (navigation.loading) return navigation.pending;
 
-    const hasCompleteSnapshot = navigation.cache?.key === projectKey;
+    const hasCompleteSnapshot = isCurrentCache();
     const generation = navigation.requestGeneration + 1;
     navigation.requestGeneration = generation;
     navigation.loading = true;
@@ -847,44 +941,59 @@
     navigation.message = '';
     renderNavigationPanel(host);
 
-    const pending = Promise.allSettled([
-      fetchAllItems(reference, 'issue'),
-      fetchAllItems(reference, 'merge-request'),
-    ]).then((results) => {
+    const kinds = getVisibleKinds();
+    const fetchOne = (kind) => fetchAllItems(reference, kind)
+      .then((value) => ({ status: 'fulfilled', value }))
+      .catch((reason) => ({ status: 'rejected', reason }));
+    const pending = (async () => {
+      const results = [];
+      if (activeConfig.loadingMode === 'sequential') {
+        for (const kind of kinds) results.push(await fetchOne(kind));
+      } else {
+        results.push(...await Promise.all(kinds.map(fetchOne)));
+      }
       if (!isCurrentNavigationRequest(generation, projectKey, host)) return;
 
-      const [issuesResult, mergeRequestsResult] = results;
-      const complete = issuesResult.status === 'fulfilled'
-        && mergeRequestsResult.status === 'fulfilled';
+      const issueResult = kinds.indexOf('issue') >= 0 ? results[kinds.indexOf('issue')] : null;
+      const mergeRequestResult = kinds.indexOf('merge-request') >= 0
+        ? results[kinds.indexOf('merge-request')]
+        : null;
+      const issueSucceeded = !issueResult || issueResult.status === 'fulfilled';
+      const mergeRequestSucceeded = !mergeRequestResult || mergeRequestResult.status === 'fulfilled';
+      const complete = issueSucceeded && mergeRequestSucceeded;
 
       if (complete) {
-        navigation.issues = issuesResult.value;
-        navigation.mergeRequests = mergeRequestsResult.value;
+        navigation.issues = issueResult?.value || [];
+        navigation.mergeRequests = mergeRequestResult?.value || [];
         navigation.errors = { issues: false, mergeRequests: false };
         navigation.cache = {
           key: projectKey,
+          listFilter: activeConfig.listFilter,
+          maxItemsPerType: activeConfig.maxItemsPerType,
           loadedAt: root.Date.now(),
-          issues: issuesResult.value,
-          mergeRequests: mergeRequestsResult.value,
+          issues: navigation.issues,
+          mergeRequests: navigation.mergeRequests,
         };
+        navigation.lastLoadedAt = navigation.cache.loadedAt;
       } else if (hasCompleteSnapshot) {
         navigation.issues = navigation.cache.issues;
         navigation.mergeRequests = navigation.cache.mergeRequests;
+        navigation.lastLoadedAt = navigation.cache.loadedAt;
         navigation.message = '刷新失败，显示上次结果';
       } else {
-        navigation.issues = issuesResult.status === 'fulfilled' ? issuesResult.value : null;
-        navigation.mergeRequests = mergeRequestsResult.status === 'fulfilled'
-          ? mergeRequestsResult.value
+        navigation.issues = issueResult?.status === 'fulfilled' ? issueResult.value : null;
+        navigation.mergeRequests = mergeRequestResult?.status === 'fulfilled'
+          ? mergeRequestResult.value
           : null;
         navigation.errors = {
-          issues: issuesResult.status === 'rejected',
-          mergeRequests: mergeRequestsResult.status === 'rejected',
+          issues: Boolean(issueResult?.status === 'rejected'),
+          mergeRequests: Boolean(mergeRequestResult?.status === 'rejected'),
         };
       }
       navigation.loading = false;
       navigation.pending = null;
       renderNavigationPanel(host);
-    });
+    })();
     navigation.pending = pending;
     return pending;
   }
@@ -1053,6 +1162,10 @@
         appearance: none;
       }
 
+      :host([data-touch-drag="false"]) [data-drag-handle] {
+        touch-action: auto;
+      }
+
       [data-drag-handle]:hover {
         background: rgba(31, 41, 55, 0.08);
         color: #24292f;
@@ -1199,6 +1312,18 @@
         align-items: center;
         gap: 7px;
         font-weight: 600;
+      }
+
+      [data-open-items-heading] {
+        flex-wrap: wrap;
+      }
+
+      [data-last-refresh] {
+        flex-basis: 100%;
+        color: #6e7781;
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 14px;
       }
 
       [data-open-items-total],
@@ -1463,7 +1588,8 @@
 
         [data-refresh-open-items],
         [data-open-items-group-heading],
-        [data-open-items-status] {
+        [data-open-items-status],
+        [data-last-refresh] {
           color: #b7bdc8;
         }
 
@@ -1516,6 +1642,7 @@
     handle.addEventListener('pointercancel', handleDragPointerCancel);
     handle.addEventListener('dblclick', handleDragDoubleClick);
     handle.addEventListener('click', handleDragClick);
+    handle.addEventListener('keydown', handleDragKeydown);
 
     const handleIcon = createDragHandleIcon();
     const handleTooltip = root.document.createElement('span');
@@ -1580,10 +1707,10 @@
     return host;
   }
 
-  function sync() {
+  function sync({ resetCopy = true } = {}) {
     if (destroyed) return;
 
-    invalidateCopyOperations();
+    if (resetCopy) invalidateCopyOperations();
     lastUrl = root.location.href;
     const reference = parseGitLabReference(lastUrl);
     if (!reference) {
@@ -1593,6 +1720,10 @@
     }
 
     const projectKey = getProjectKey(reference);
+    const origin = reference.origin;
+    if (origin !== configOrigin) {
+      updateConfig(origin, { reloadNavigation: true });
+    }
     const projectChanged = navigation.projectKey !== projectKey;
     if (projectChanged) {
       resetNavigation();
@@ -1601,6 +1732,7 @@
     navigation.reference = reference;
 
     const host = root.document.getElementById(HOST_ID) || createBadgeHost();
+    host.setAttribute('data-touch-drag', activeConfig.touchDrag ? 'true' : 'false');
     const { badge, trigger, label, button } = getBadgeParts(host);
     const copyText = formatCopyText(reference);
     label.textContent = formatReference(reference);
@@ -1611,7 +1743,7 @@
     );
     button.setAttribute('aria-label', `复制 ${copyText}`);
     button.setAttribute('data-copy-text', copyText);
-    setDefaultFeedback(host, copyText);
+    if (resetCopy) setDefaultFeedback(host, copyText);
     renderNavigationPanel(host);
     applyPosition(host);
   }
@@ -1671,7 +1803,49 @@
     removeBadge();
   }
 
+  function updateConfig(origin, { reloadNavigation = false } = {}) {
+    if (origin === configOrigin && configurationGeneration > 0) return configurationReady;
+    configOrigin = origin;
+    const generation = configurationGeneration + 1;
+    configurationGeneration = generation;
+    const previous = activeConfig;
+    activeConfig = configApi.getEffectiveConfig(configStore.getConfig(), origin);
+    configurationReady = Promise.resolve(configStore.load(origin))
+      .then((effective) => {
+        if (destroyed || generation !== configurationGeneration) return;
+        const requestPolicyChanged = previous.listFilter !== effective.listFilter
+          || previous.maxItemsPerType !== effective.maxItemsPerType
+          || previous.loadingMode !== effective.loadingMode;
+        activeConfig = effective;
+        const host = root.document.getElementById(HOST_ID);
+        if (requestPolicyChanged) {
+          navigation.requestGeneration += 1;
+          navigation.pending = null;
+          navigation.loading = false;
+          navigation.cache = null;
+          navigation.lastLoadedAt = null;
+          navigation.issues = null;
+          navigation.mergeRequests = null;
+          navigation.errors = { issues: false, mergeRequests: false };
+        }
+        if (host) {
+          host.setAttribute('data-touch-drag', effective.touchDrag ? 'true' : 'false');
+          applyPosition(host);
+          sync({ resetCopy: false });
+          if ((reloadNavigation || requestPolicyChanged) && navigation.open) {
+            loadOpenItems({ force: true });
+          }
+        }
+      })
+      .catch(() => {
+        if (destroyed || generation !== configurationGeneration) return;
+        activeConfig = previous;
+      });
+    return configurationReady;
+  }
+
   function handleDocumentReady() {
+    updateConfig(getCurrentOrigin());
     sync();
     loadStoredPosition();
     startObserver();
