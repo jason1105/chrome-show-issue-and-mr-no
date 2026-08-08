@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GitLab Issue/MR Number Pin 设置</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header class="settings-header">
+        <p class="eyebrow">GitLab Issue/MR Number Pin</p>
+        <h1>设置</h1>
+        <p>调整列表、缓存和控件交互偏好。</p>
+      </header>
+      <form id="settings-form" class="settings-form">
+        <fieldset>
+          <legend>列表</legend>
+          <label>
+            <span>默认列表筛选</span>
+            <select id="list-filter">
+              <option value="all">Issues 和 Merge requests</option>
+              <option value="issue">仅 Issues</option>
+              <option value="merge-request">仅 Merge requests</option>
+            </select>
+          </label>
+          <label class="check-row">
+            <input id="remember-search" type="checkbox">
+            <span>记住列表搜索条件</span>
+          </label>
+          <label>
+            <span>缓存有效期（秒）</span>
+            <input id="cache-ttl" type="number" min="5" max="300" step="1" inputmode="numeric">
+          </label>
+          <label>
+            <span>每类最多显示数量</span>
+            <input id="max-items" type="number" min="1" max="100" step="1" inputmode="numeric">
+          </label>
+          <label>
+            <span>加载模式</span>
+            <select id="loading-mode">
+              <option value="parallel">并行加载</option>
+              <option value="sequential">顺序加载</option>
+            </select>
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>显示与交互</legend>
+          <label class="check-row">
+            <input id="show-last-refresh" type="checkbox">
+            <span>显示最后刷新时间</span>
+          </label>
+          <label class="check-row">
+            <input id="touch-drag" type="checkbox">
+            <span>启用触屏拖动控件</span>
+          </label>
+          <label>
+            <span>键盘移动步长（像素）</span>
+            <input id="keyboard-step" type="number" min="1" max="50" step="1" inputmode="numeric">
+          </label>
+        </fieldset>
+        <div class="settings-actions">
+          <button id="reset-settings" type="button" class="secondary">恢复默认值</button>
+          <button type="submit" class="primary">保存设置</button>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </main>
+    <script src="config.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -12,6 +12,10 @@
   "permissions": [
     "storage"
   ],
+  "options_ui": {
+    "page": "src/options.html",
+    "open_in_tab": true
+  },
   "content_scripts": [
     {
       "matches": [
@@ -20,6 +24,7 @@
       ],
       "js": [
         "src/parser.js",
+        "src/config.js",
         "src/content.js"
       ],
       "run_at": "document_start"
