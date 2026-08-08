@@ -7,7 +7,9 @@
   if (!root.document || !root.GitLabReferenceConfig) return;
 
   const storage = root.chrome?.storage?.local;
-  const store = root.GitLabReferenceConfig.createConfigStore(storage);
+  const store = root.GitLabReferenceConfig.createConfigStore(storage, {
+    storageChangeEvents: root.chrome?.storage?.onChanged,
+  });
   const controller = api.createOptionsController(
     root.document,
     store,
@@ -29,16 +31,24 @@
   };
 
   function buildUserPatch(fields) {
-    return {
+    const patch = {
       listFilter: fields.listFilter.value,
       rememberSearch: Boolean(fields.rememberSearch.checked),
-      cacheTtlSeconds: Number(fields.cacheTtlSeconds.value),
-      maxItemsPerType: Number(fields.maxItemsPerType.value),
       loadingMode: fields.loadingMode.value,
       showLastRefresh: Boolean(fields.showLastRefresh.checked),
       touchDrag: Boolean(fields.touchDrag.checked),
-      keyboardStep: Number(fields.keyboardStep.value),
     };
+    for (const [name, field] of [
+      ['cacheTtlSeconds', fields.cacheTtlSeconds],
+      ['maxItemsPerType', fields.maxItemsPerType],
+      ['keyboardStep', fields.keyboardStep],
+    ]) {
+      const rawValue = String(field?.value ?? '').trim();
+      if (!rawValue) continue;
+      const value = Number(rawValue);
+      if (Number.isFinite(value)) patch[name] = value;
+    }
+    return patch;
   }
 
   function getFields(document) {

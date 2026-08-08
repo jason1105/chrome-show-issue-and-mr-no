@@ -93,6 +93,27 @@ test('builds a validated user patch from option controls', () => {
   });
 });
 
+test('omits empty numeric controls so saving does not silently clamp them', () => {
+  const patch = buildUserPatch({
+    listFilter: { value: 'issue' },
+    rememberSearch: { checked: false },
+    cacheTtlSeconds: { value: '' },
+    maxItemsPerType: { value: '   ' },
+    loadingMode: { value: 'parallel' },
+    showLastRefresh: { checked: true },
+    touchDrag: { checked: true },
+    keyboardStep: { value: 'not-a-number' },
+  });
+
+  assert.deepEqual(patch, {
+    listFilter: 'issue',
+    rememberSearch: false,
+    loadingMode: 'parallel',
+    showLastRefresh: true,
+    touchDrag: true,
+  });
+});
+
 test('loads, saves, and resets settings through the configuration store', async () => {
   const storage = createStorage();
   const store = createConfigStore(storage);

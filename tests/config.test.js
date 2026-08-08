@@ -133,6 +133,23 @@ test('merges a site profile with user preferences while preserving protected lim
   assert.equal(effective.protected.maxItemsPerType, 100);
 });
 
+test('keeps an initial configuration when storage is unavailable', async () => {
+  const store = createConfigStore(null, {
+    initialConfig: {
+      user: { listFilter: 'issue' },
+      position: { edge: 'left', ratio: 0.25 },
+    },
+  });
+
+  await store.save({ cacheTtlSeconds: 120 }, 'https://git.example.test');
+  assert.equal(store.getEffective('https://git.example.test').listFilter, 'issue');
+  assert.equal(store.getEffective('https://git.example.test').cacheTtlSeconds, 120);
+  assert.deepEqual(store.getEffective('https://git.example.test').position, {
+    edge: 'left',
+    ratio: 0.25,
+  });
+});
+
 test('keeps in-memory preferences when saving fails and reports the storage error', async () => {
   const storage = createMemoryStorage();
   storage.set = () => Promise.reject(new Error('quota exceeded'));
@@ -144,6 +161,77 @@ test('keeps in-memory preferences when saving fails and reports the storage erro
     /quota exceeded/,
   );
   assert.equal(store.getEffective('https://git.example.test').listFilter, 'issue');
+});
+
+test('merges a fresh stored snapshot before writing a position from another context', async () => {
+  const storage = createMemoryStorage();
+  const optionsStore = createConfigStore(storage);
+  const contentStore = createConfigStore(storage);
+  await optionsStore.load('https://git.example.test');
+  await contentStore.load('https://git.example.test');
+
+  await optionsStore.save({ listFilter: 'issue', cacheTtlSeconds: 240 }, 'https://git.example.test');
+  await contentStore.setPosition({ edge: 'right', ratio: 0.9 }, 'https://git.example.test');
+
+  const stored = storage.data[CONFIG_STORAGE_KEY];
+  assert.equal(stored.user.listFilter, 'issue');
+  assert.equal(stored.user.cacheTtlSeconds, 240);
+  assert.deepEqual(stored.userOverrides, { listFilter: true, cacheTtlSeconds: true });
+  assert.deepEqual(stored.position, { edge: 'right', ratio: 0.9 });
+});
+
+test('updates an existing store when another context changes configuration', async () => {
+  const storage = createMemoryStorage();
+  const changes = new Set();
+  const onChanged = {
+    addListener(listener) {
+      changes.add(listener);
+    },
+    removeListener(listener) {
+      changes.delete(listener);
+    },
+  };
+  const firstStore = createConfigStore(storage, { storageChangeEvents: onChanged });
+  const secondStore = createConfigStore(storage, { storageChangeEvents: onChanged });
+  await firstStore.load('https://git.example.test');
+  await secondStore.load('https://git.example.test');
+
+  await firstStore.save({ listFilter: 'merge-request' }, 'https://git.example.test');
+  await Promise.all([...changes].map((listener) => listener({
+      [CONFIG_STORAGE_KEY]: { newValue: storage.data[CONFIG_STORAGE_KEY] },
+    }, 'local')));
+
+  assert.equal(secondStore.getEffective('https://git.example.test').listFilter, 'merge-request');
+});
+
+test('keeps the previous in-memory configuration when reset persistence fails', async () => {
+  const storage = createMemoryStorage({
+    [CONFIG_STORAGE_KEY]: {
+      version: 1,
+      user: { listFilter: 'issue' },
+      position: { edge: 'right', ratio: 0.8 },
+      sites: { 'https://git.example.test': { loadingMode: 'sequential' } },
+    },
+  });
+  let rejectNextSet = true;
+  const originalSet = storage.set;
+  storage.set = (value) => {
+    if (rejectNextSet) {
+      rejectNextSet = false;
+      return Promise.reject(new Error('quota exceeded'));
+    }
+    return originalSet(value);
+  };
+  const store = createConfigStore(storage);
+  await store.load('https://git.example.test');
+
+  await assert.rejects(store.reset('https://git.example.test'), /quota exceeded/);
+  assert.equal(store.getEffective('https://git.example.test').listFilter, 'issue');
+  assert.equal(store.getEffective('https://git.example.test').loadingMode, 'sequential');
+  assert.deepEqual(store.getEffective('https://git.example.test').position, { edge: 'right', ratio: 0.8 });
+
+  await store.reset('https://git.example.test');
+  assert.equal(store.getEffective('https://git.example.test').listFilter, 'all');
 });
 
 test('reset restores defaults and clears the stored legacy position', async () => {

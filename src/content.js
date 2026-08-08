@@ -70,7 +70,12 @@
   let positionFrameId = null;
   let drag = null;
   let activeConfig = { ...defaultConfig, position: { ...defaultConfig.position } };
-  const configStore = configApi.createConfigStore(root.chrome?.storage?.local);
+  const configStore = configApi.createConfigStore(root.chrome?.storage?.local, {
+    storageChangeEvents: root.chrome?.storage?.onChanged,
+    onConfigChanged() {
+      updateConfig(getCurrentOrigin(), { force: true });
+    },
+  });
   let configOrigin = initialOrigin;
   let configurationReady = Promise.resolve();
   let configurationGeneration = 0;
@@ -1800,11 +1805,12 @@
     root.document.removeEventListener('DOMContentLoaded', handleDocumentReady);
     root.document.removeEventListener('pointerdown', handleDocumentPointerDown);
     root.removeEventListener('resize', handleResize);
+    configStore.dispose?.();
     removeBadge();
   }
 
-  function updateConfig(origin, { reloadNavigation = false } = {}) {
-    if (origin === configOrigin && configurationGeneration > 0) return configurationReady;
+  function updateConfig(origin, { force = false, reloadNavigation = false } = {}) {
+    if (!force && origin === configOrigin && configurationGeneration > 0) return configurationReady;
     configOrigin = origin;
     const generation = configurationGeneration + 1;
     configurationGeneration = generation;

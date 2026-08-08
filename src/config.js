@@ -190,14 +190,15 @@
     let config = normalizeConfig(options.initialConfig);
     let loaded = Boolean(options.initialConfig);
     let pendingLoad = null;
+    let disposed = false;
 
     function getEffective(origin) {
       return getEffectiveConfig(config, origin);
     }
 
-    async function persist() {
+    async function persist(nextConfig = config) {
       if (!storage?.set) return;
-      await storage.set({ [CONFIG_STORAGE_KEY]: clone(config) });
+      await storage.set({ [CONFIG_STORAGE_KEY]: clone(nextConfig) });
     }
 
     let mutationQueue = Promise.resolve();
@@ -212,6 +213,40 @@
       if (!loaded) await load();
     }
 
+    async function readStoredSnapshot() {
+      if (!storage?.get) return { stored: undefined, legacyPosition: undefined };
+      const result = await storage.get([CONFIG_STORAGE_KEY, LEGACY_POSITION_STORAGE_KEY]);
+      return {
+        stored: result?.[CONFIG_STORAGE_KEY],
+        legacyPosition: result?.[LEGACY_POSITION_STORAGE_KEY],
+      };
+    }
+
+    function applyStoredSnapshot(stored, legacyPosition) {
+      config = normalizeConfig(stored);
+      const needsPositionMigration = legacyPosition !== undefined && (
+        !stored
+        || typeof stored !== 'object'
+        || !Object.prototype.hasOwnProperty.call(stored, 'position')
+      );
+      if (needsPositionMigration) config.position = normalizePosition(legacyPosition);
+      return {
+        needsVersionMigration: stored !== undefined && getStoredVersion(stored) < CONFIG_VERSION,
+        needsPositionMigration,
+      };
+    }
+
+    async function refreshFromStorage() {
+      if (!storage?.get) {
+        return {
+          needsVersionMigration: false,
+          needsPositionMigration: false,
+        };
+      }
+      const { stored, legacyPosition } = await readStoredSnapshot();
+      return applyStoredSnapshot(stored, legacyPosition);
+    }
+
     async function removeLegacyPosition() {
       if (!storage?.remove) return;
       await storage.remove(LEGACY_POSITION_STORAGE_KEY);
@@ -222,32 +257,16 @@
       if (pendingLoad) return pendingLoad.then(() => getEffective(origin));
 
       pendingLoad = (async () => {
-        let stored;
-        let legacyPosition;
-        if (storage?.get) {
-          try {
-            const result = await storage.get([CONFIG_STORAGE_KEY, LEGACY_POSITION_STORAGE_KEY]);
-            stored = result?.[CONFIG_STORAGE_KEY];
-            legacyPosition = result?.[LEGACY_POSITION_STORAGE_KEY];
-          } catch {
-            stored = undefined;
-            legacyPosition = undefined;
-          }
-        }
-        config = normalizeConfig(stored);
-
-        const storedVersion = getStoredVersion(stored);
-        const needsVersionMigration = stored !== undefined && storedVersion < CONFIG_VERSION;
-        const needsPositionMigration = legacyPosition !== undefined && (
-          !stored
-          || typeof stored !== 'object'
-          || !Object.prototype.hasOwnProperty.call(stored, 'position')
-        );
-        if (needsPositionMigration) {
-          config.position = normalizePosition(legacyPosition);
+        let migration;
+        try {
+          migration = await refreshFromStorage();
+        } catch {
+          config = getDefaultConfig();
+          loaded = true;
+          return;
         }
 
-        const needsPersistence = needsVersionMigration || needsPositionMigration;
+        const needsPersistence = migration.needsVersionMigration || migration.needsPositionMigration;
         let migrationPersisted = !needsPersistence;
         if (needsPersistence) {
           try {
@@ -257,7 +276,7 @@
             // Keep the migrated value in memory if the browser rejects storage writes.
           }
         }
-        if (needsPositionMigration && migrationPersisted) {
+        if (migration.needsPositionMigration && migrationPersisted) {
           try {
             await removeLegacyPosition();
           } catch {
@@ -278,6 +297,7 @@
     async function save(userPatch, origin) {
       return enqueueMutation(async () => {
         await ensureLoaded();
+        await refreshFromStorage();
         for (const name of Object.keys(DEFAULT_USER)) {
           if (!Object.prototype.hasOwnProperty.call(userPatch || {}, name)) continue;
           config.user[name] = normalizePreference(name, userPatch[name], DEFAULT_USER[name]);
@@ -292,6 +312,7 @@
     async function saveSite(siteOrigin, sitePatch, origin = siteOrigin) {
       return enqueueMutation(async () => {
         await ensureLoaded();
+        await refreshFromStorage();
         if (typeof siteOrigin !== 'string' || !siteOrigin) return getEffective(origin);
         config.sites[siteOrigin] = normalizeProfile(sitePatch);
         config = normalizeConfig(config);
@@ -303,6 +324,7 @@
     async function setPosition(nextPosition, origin) {
       return enqueueMutation(async () => {
         await ensureLoaded();
+        await refreshFromStorage();
         config.position = normalizePosition(nextPosition);
         config = normalizeConfig(config);
         await persist();
@@ -313,6 +335,7 @@
     async function resetPosition(origin) {
       return enqueueMutation(async () => {
         await ensureLoaded();
+        await refreshFromStorage();
         config.position = { ...DEFAULT_POSITION };
         config = normalizeConfig(config);
         await persist();
@@ -324,8 +347,10 @@
     async function reset(origin) {
       return enqueueMutation(async () => {
         await ensureLoaded();
-        config = getDefaultConfig();
-        await persist();
+        await refreshFromStorage();
+        const nextConfig = getDefaultConfig();
+        await persist(nextConfig);
+        config = nextConfig;
         try {
           await removeLegacyPosition();
         } catch {
@@ -333,6 +358,31 @@
         }
         return getEffective(origin);
       });
+    }
+
+    async function handleStorageChanged(changes, areaName) {
+      if (disposed || (areaName && areaName !== 'local')) return;
+      if (!changes?.[CONFIG_STORAGE_KEY] && !changes?.[LEGACY_POSITION_STORAGE_KEY]) return;
+
+      try {
+        await enqueueMutation(async () => {
+          await ensureLoaded();
+          await refreshFromStorage();
+        });
+        if (!disposed && typeof options.onConfigChanged === 'function') {
+          options.onConfigChanged(changes, areaName);
+        }
+      } catch {
+        // The next explicit read or write can recover from a transient storage failure.
+      }
+    }
+
+    const storageChangeEvents = options.storageChangeEvents;
+    storageChangeEvents?.addListener?.(handleStorageChanged);
+
+    function dispose() {
+      disposed = true;
+      storageChangeEvents?.removeListener?.(handleStorageChanged);
     }
 
     return {
@@ -344,6 +394,7 @@
       saveSite,
       setPosition,
       getConfig: () => clone(config),
+      dispose,
     };
   }
 

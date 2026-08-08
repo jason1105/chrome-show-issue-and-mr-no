@@ -290,6 +290,7 @@ function createHarness(initialUrl, options = {}) {
   const fetchCalls = [];
   const storageCalls = { get: [], set: [], remove: [] };
   const storageData = { ...(options.storageData || {}) };
+  const storageChangeListeners = new Set();
   let innerWidth = options.innerWidth || 1280;
   let innerHeight = options.innerHeight || 800;
   let nextFrameId = 1;
@@ -366,7 +367,11 @@ function createHarness(initialUrl, options = {}) {
       set(value) {
         storageCalls.set.push(value);
         if (options.storageSetError) return Promise.reject(options.storageSetError);
+        const changes = Object.fromEntries(Object.entries(value).map(([key, newValue]) => ({
+          [key]: { oldValue: storageData[key], newValue },
+        })));
         Object.assign(storageData, value);
+        for (const listener of storageChangeListeners) listener(changes, 'local');
         return Promise.resolve();
       },
       remove(key) {
@@ -374,6 +379,14 @@ function createHarness(initialUrl, options = {}) {
         if (options.storageRemoveError) return Promise.reject(options.storageRemoveError);
         delete storageData[key];
         return Promise.resolve();
+      },
+    },
+    onChanged: {
+      addListener(listener) {
+        storageChangeListeners.add(listener);
+      },
+      removeListener(listener) {
+        storageChangeListeners.delete(listener);
       },
     },
   };
@@ -426,6 +439,9 @@ function createHarness(initialUrl, options = {}) {
     fetchCalls,
     storageCalls,
     storageData,
+    dispatchStorageChanged(changes, areaName = 'local') {
+      return Promise.all([...storageChangeListeners].map((listener) => listener(changes, areaName)));
+    },
     dispatchWindow(type, overrides = {}) {
       windowEvents.dispatchEvent({ type, ...overrides });
     },
@@ -1125,6 +1141,43 @@ test('disables touch dragging and uses the configured keyboard step', async () =
 
   rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
   assert.equal(readPixelStyle(rendered.host, '--reference-left'), 580);
+});
+
+test('applies configuration changes to an already open GitLab page', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        user: { listFilter: 'all', touchDrag: true },
+      },
+    },
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Current issue' }]),
+      jsonResponse([{ iid: 16, title: 'Open MR' }]),
+      jsonResponse([{ iid: 15, title: 'Filtered issue' }]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  assert.equal(harness.fetchCalls.length, 2);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 2);
+
+  const nextConfig = {
+    ...harness.storageData[CONFIG_STORAGE_KEY],
+    user: { ...harness.storageData[CONFIG_STORAGE_KEY].user, listFilter: 'issue', touchDrag: false },
+    userOverrides: { listFilter: true, touchDrag: true },
+  };
+  harness.storageData[CONFIG_STORAGE_KEY] = nextConfig;
+  await harness.dispatchStorageChanged({
+    [CONFIG_STORAGE_KEY]: { newValue: nextConfig },
+  });
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+
+  assert.equal(rendered.host.getAttribute('data-touch-drag'), 'false');
+  assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 1);
+  assert.equal(rendered.panel.querySelector('[data-open-items-group]').getAttribute('data-open-items-group'), 'issues');
+  assert.equal(harness.fetchCalls.length, 3);
+  assert.match(harness.fetchCalls[2].url, /\/issues\?/);
 });
 
 test('reuses a complete snapshot for 60 seconds and refreshes expired data', async () => {
