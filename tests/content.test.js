@@ -367,9 +367,12 @@ function createHarness(initialUrl, options = {}) {
       set(value) {
         storageCalls.set.push(value);
         if (options.storageSetError) return Promise.reject(options.storageSetError);
-        const changes = Object.fromEntries(Object.entries(value).map(([key, newValue]) => ({
-          [key]: { oldValue: storageData[key], newValue },
-        })));
+        const changes = Object.fromEntries(
+          Object.entries(value).map(([key, newValue]) => [
+            key,
+            { oldValue: storageData[key], newValue },
+          ]),
+        );
         Object.assign(storageData, value);
         for (const listener of storageChangeListeners) listener(changes, 'local');
         return Promise.resolve();
@@ -377,7 +380,10 @@ function createHarness(initialUrl, options = {}) {
       remove(key) {
         storageCalls.remove.push(key);
         if (options.storageRemoveError) return Promise.reject(options.storageRemoveError);
+        const oldValue = storageData[key];
         delete storageData[key];
+        const change = { [key]: { oldValue, newValue: undefined } };
+        for (const listener of storageChangeListeners) listener(change, 'local');
         return Promise.resolve();
       },
     },
@@ -1141,6 +1147,78 @@ test('disables touch dragging and uses the configured keyboard step', async () =
 
   rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
   assert.equal(readPixelStyle(rendered.host, '--reference-left'), 580);
+  assert.equal(harness.storageCalls.set.length, 0);
+  harness.advanceTimersBy(200);
+  await harness.flushMicrotasks();
+  assert.equal(harness.storageCalls.set.length, 1);
+});
+
+test('coalesces repeated keyboard position changes into one storage write', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15');
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  const initialPanelChild = rendered.panel.children[0];
+
+  rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
+  rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
+  rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
+
+  assert.equal(harness.storageCalls.set.length, 0);
+  harness.advanceTimersBy(199);
+  assert.equal(harness.storageCalls.set.length, 0);
+  harness.advanceTimersBy(1);
+  await harness.flushMicrotasks();
+
+  assert.equal(harness.storageCalls.set.length, 1);
+  assert.equal(rendered.panel.children[0], initialPanelChild);
+});
+
+test('applies a persisted position update without rebuilding the navigation panel', async () => {
+  const initialConfig = {
+    version: 1,
+    position: { edge: 'right', ratio: 0.25 },
+  };
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: { [CONFIG_STORAGE_KEY]: initialConfig },
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  const nextConfig = {
+    ...initialConfig,
+    position: { edge: 'left', ratio: 0.75 },
+  };
+  harness.storageData[CONFIG_STORAGE_KEY] = nextConfig;
+  const panelChild = rendered.panel.children[0];
+  await harness.dispatchStorageChanged({
+    [CONFIG_STORAGE_KEY]: { oldValue: initialConfig, newValue: nextConfig },
+  });
+  await harness.flushMicrotasks();
+
+  assert.equal(rendered.host.getAttribute('data-edge'), 'left');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 8);
+  assert.equal(rendered.panel.children[0], panelChild);
+});
+
+test('restores the persisted position when a position write fails', async () => {
+  const initialConfig = {
+    version: 1,
+    position: { edge: 'right', ratio: 0.25 },
+  };
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: { [CONFIG_STORAGE_KEY]: initialConfig },
+    storageSetError: new Error('quota exceeded'),
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 8, width: 160, height: 30 });
+
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 20);
+  dispatchPointer(rendered.handle, 'pointermove', 12, 500);
+  dispatchPointer(rendered.handle, 'pointerup', 12, 500);
+  await harness.flushMicrotasks();
+
+  assert.equal(rendered.host.getAttribute('data-edge'), 'right');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 1112);
 });
 
 test('applies configuration changes to an already open GitLab page', async () => {

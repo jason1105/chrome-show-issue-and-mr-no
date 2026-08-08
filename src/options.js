@@ -16,7 +16,7 @@
     root.location?.origin || '',
   );
   controller.init();
-})(typeof globalThis === 'undefined' ? this : globalThis, (configApi) => {
+})(typeof globalThis === 'undefined' ? this : globalThis, () => {
   'use strict';
 
   const FIELD_IDS = {

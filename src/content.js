@@ -6,6 +6,7 @@
   const FEEDBACK_DURATION_MS = 1500;
   const HOVER_OPEN_DELAY_MS = 150;
   const HOVER_CLOSE_DELAY_MS = 250;
+  const POSITION_SAVE_DELAY_MS = 200;
   const VIEWPORT_MARGIN = 8;
   const PANEL_GAP = 6;
   const DRAG_THRESHOLD = 4;
@@ -68,6 +69,9 @@
   let positionLoaded = false;
   let positionGeneration = 0;
   let positionFrameId = null;
+  let positionSaveTimerId = null;
+  let pendingPositionSave = null;
+  let persistedPosition = { ...DEFAULT_POSITION };
   let drag = null;
   let activeConfig = { ...defaultConfig, position: { ...defaultConfig.position } };
   const configStore = configApi.createConfigStore(root.chrome?.storage?.local, {
@@ -368,15 +372,80 @@
     setHostPixels(host, rect.left, rect.top, position.edge);
   }
 
-  function savePosition() {
-    const generation = positionGeneration;
-    Promise.resolve(configStore.setPosition(position, configOrigin)).catch(() => {
-      if (destroyed || generation !== positionGeneration) return;
-    });
+  function positionsEqual(first, second) {
+    return first?.edge === second?.edge && first?.ratio === second?.ratio;
+  }
+
+  function savePosition(nextPosition = position, generation = positionGeneration) {
+    const snapshot = configApi.normalizePosition(nextPosition);
+    const priorPosition = { ...persistedPosition };
+    Promise.resolve(configStore.setPosition(snapshot, configOrigin))
+      .then(() => {
+        persistedPosition = { ...snapshot };
+      })
+      .catch(() => {
+        if (
+          destroyed
+          || generation !== positionGeneration
+          || !positionsEqual(position, snapshot)
+        ) return;
+        positionGeneration += 1;
+        position = { ...priorPosition };
+        applyPosition();
+      });
+  }
+
+  function cancelScheduledPositionSave() {
+    if (positionSaveTimerId !== null) {
+      root.clearTimeout(positionSaveTimerId);
+      positionSaveTimerId = null;
+    }
+    pendingPositionSave = null;
+  }
+
+  function flushScheduledPositionSave() {
+    if (positionSaveTimerId !== null) {
+      root.clearTimeout(positionSaveTimerId);
+      positionSaveTimerId = null;
+    }
+    const pending = pendingPositionSave;
+    pendingPositionSave = null;
+    if (pending) savePosition(pending.position, pending.generation);
+  }
+
+  function schedulePositionSave() {
+    pendingPositionSave = {
+      position: { ...position },
+      generation: positionGeneration,
+    };
+    if (positionSaveTimerId !== null) root.clearTimeout(positionSaveTimerId);
+    positionSaveTimerId = root.setTimeout(() => {
+      positionSaveTimerId = null;
+      const pending = pendingPositionSave;
+      pendingPositionSave = null;
+      if (pending) savePosition(pending.position, pending.generation);
+    }, POSITION_SAVE_DELAY_MS);
   }
 
   function clearStoredPosition() {
-    Promise.resolve(configStore.resetPosition(configOrigin)).catch(() => {});
+    cancelScheduledPositionSave();
+    const generation = positionGeneration;
+    const nextPosition = { ...DEFAULT_POSITION };
+    const priorPosition = { ...persistedPosition };
+    Promise.resolve(configStore.resetPosition(configOrigin))
+      .then(() => {
+        persistedPosition = nextPosition;
+      })
+      .catch(() => {
+        if (
+          destroyed
+          || generation !== positionGeneration
+          || !positionsEqual(position, nextPosition)
+        ) return;
+        positionGeneration += 1;
+        position = priorPosition;
+        applyPosition();
+      });
   }
 
   function loadStoredPosition() {
@@ -386,6 +455,7 @@
     Promise.resolve(configurationReady).then(() => {
       if (destroyed || generation !== positionGeneration) return;
       position = configApi.normalizePosition(activeConfig.position);
+      persistedPosition = { ...position };
       applyPosition();
     }).catch(() => {});
   }
@@ -548,7 +618,7 @@
       ),
     };
     applyPosition(host);
-    savePosition();
+    schedulePositionSave();
   }
 
   function handleResize() {
@@ -1780,6 +1850,7 @@
 
   function destroy() {
     if (destroyed) return;
+    flushScheduledPositionSave();
     destroyed = true;
     invalidateCopyOperations();
     resetNavigation();
@@ -1822,6 +1893,14 @@
         const requestPolicyChanged = previous.listFilter !== effective.listFilter
           || previous.maxItemsPerType !== effective.maxItemsPerType
           || previous.loadingMode !== effective.loadingMode;
+        const navigationDisplayChanged = previous.showLastRefresh !== effective.showLastRefresh;
+        const nextPosition = configApi.normalizePosition(effective.position);
+        const preserveLocalPosition = Boolean(drag || pendingPositionSave);
+        if (!preserveLocalPosition) persistedPosition = { ...nextPosition };
+        if (!preserveLocalPosition && !positionsEqual(position, nextPosition)) {
+          positionGeneration += 1;
+          position = { ...nextPosition };
+        }
         activeConfig = effective;
         const host = root.document.getElementById(HOST_ID);
         if (requestPolicyChanged) {
@@ -1837,7 +1916,7 @@
         if (host) {
           host.setAttribute('data-touch-drag', effective.touchDrag ? 'true' : 'false');
           applyPosition(host);
-          sync({ resetCopy: false });
+          if (requestPolicyChanged || navigationDisplayChanged) sync({ resetCopy: false });
           if ((reloadNavigation || requestPolicyChanged) && navigation.open) {
             loadOpenItems({ force: true });
           }

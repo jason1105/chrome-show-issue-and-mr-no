@@ -191,6 +191,7 @@
     let loaded = Boolean(options.initialConfig);
     let pendingLoad = null;
     let disposed = false;
+    let storedConfigPresent = Boolean(options.initialConfig);
 
     function getEffective(origin) {
       return getEffectiveConfig(config, origin);
@@ -223,6 +224,7 @@
     }
 
     function applyStoredSnapshot(stored, legacyPosition) {
+      storedConfigPresent = stored !== undefined;
       config = normalizeConfig(stored);
       const needsPositionMigration = legacyPosition !== undefined && (
         !stored
@@ -365,11 +367,23 @@
       if (!changes?.[CONFIG_STORAGE_KEY] && !changes?.[LEGACY_POSITION_STORAGE_KEY]) return;
 
       try {
+        let changed = false;
         await enqueueMutation(async () => {
           await ensureLoaded();
-          await refreshFromStorage();
+          const previous = config;
+          const configChange = changes[CONFIG_STORAGE_KEY];
+          const legacyPositionChange = changes[LEGACY_POSITION_STORAGE_KEY];
+          if (configChange) {
+            applyStoredSnapshot(configChange.newValue, legacyPositionChange?.newValue);
+          } else if (legacyPositionChange && !storedConfigPresent) {
+            config = normalizeConfig({
+              ...config,
+              position: normalizePosition(legacyPositionChange.newValue),
+            });
+          }
+          changed = JSON.stringify(previous) !== JSON.stringify(config);
         });
-        if (!disposed && typeof options.onConfigChanged === 'function') {
+        if (changed && !disposed && typeof options.onConfigChanged === 'function') {
           options.onConfigChanged(changes, areaName);
         }
       } catch {
