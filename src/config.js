@@ -28,6 +28,23 @@
     storeSensitiveData: false,
   });
 
+  const CONFIG_MIGRATIONS = Object.freeze({
+    0(input) {
+      const user = input.user && typeof input.user === 'object' ? input.user : {};
+      const userOverrides = input.userOverrides && typeof input.userOverrides === 'object'
+        ? input.userOverrides
+        : Object.fromEntries(Object.keys(DEFAULT_USER)
+          .filter((name) => Object.prototype.hasOwnProperty.call(user, name))
+          .map((name) => [name, true]));
+      return {
+        ...input,
+        version: 1,
+        user,
+        userOverrides,
+      };
+    },
+  });
+
   function clone(value) {
     if (value === undefined) return undefined;
     return JSON.parse(JSON.stringify(value));
@@ -85,6 +102,26 @@
     return normalized;
   }
 
+  function getStoredVersion(raw) {
+    return Number.isInteger(raw?.version) && raw.version >= 0 ? raw.version : 0;
+  }
+
+  function migrateConfig(raw) {
+    let migrated = raw && typeof raw === 'object' ? clone(raw) : {};
+    let version = getStoredVersion(migrated);
+
+    while (version < CONFIG_VERSION) {
+      const migrate = CONFIG_MIGRATIONS[version];
+      if (!migrate) return {};
+      migrated = migrate(migrated);
+      const nextVersion = getStoredVersion(migrated);
+      if (nextVersion <= version) return {};
+      version = nextVersion;
+    }
+
+    return migrated;
+  }
+
   function getDefaultConfig() {
     return {
       version: CONFIG_VERSION,
@@ -96,7 +133,7 @@
   }
 
   function normalizeConfig(raw) {
-    const input = raw && typeof raw === 'object' ? raw : {};
+    const input = migrateConfig(raw);
     const rawUser = input.user && typeof input.user === 'object' ? input.user : {};
     const user = {};
     for (const name of Object.keys(DEFAULT_USER)) {
@@ -199,13 +236,32 @@
         }
         config = normalizeConfig(stored);
 
-        if (stored === undefined && legacyPosition !== undefined) {
+        const storedVersion = getStoredVersion(stored);
+        const needsVersionMigration = stored !== undefined && storedVersion < CONFIG_VERSION;
+        const needsPositionMigration = legacyPosition !== undefined && (
+          !stored
+          || typeof stored !== 'object'
+          || !Object.prototype.hasOwnProperty.call(stored, 'position')
+        );
+        if (needsPositionMigration) {
           config.position = normalizePosition(legacyPosition);
+        }
+
+        const needsPersistence = needsVersionMigration || needsPositionMigration;
+        let migrationPersisted = !needsPersistence;
+        if (needsPersistence) {
           try {
             await persist();
-            await removeLegacyPosition();
+            migrationPersisted = true;
           } catch {
             // Keep the migrated value in memory if the browser rejects storage writes.
+          }
+        }
+        if (needsPositionMigration && migrationPersisted) {
+          try {
+            await removeLegacyPosition();
+          } catch {
+            // The versioned position is already durable; stale legacy data is harmless.
           }
         }
         loaded = true;
@@ -301,6 +357,7 @@
     createConfigStore,
     getDefaultConfig,
     getEffectiveConfig,
+    migrateConfig,
     normalizeConfig,
     normalizePosition,
   };

@@ -7,6 +7,7 @@ const {
   DEFAULT_POSITION,
   createConfigStore,
   getDefaultConfig,
+  migrateConfig,
   normalizeConfig,
 } = require('../src/config.js');
 
@@ -79,6 +80,35 @@ test('migrates the legacy position key into the versioned configuration', async 
   assert.deepEqual(storage.calls.set, [{
     [CONFIG_STORAGE_KEY]: storage.data[CONFIG_STORAGE_KEY],
   }]);
+  assert.deepEqual(storage.calls.remove, [LEGACY_POSITION_STORAGE_KEY]);
+});
+
+test('migrates an unversioned configuration and persists the current schema', async () => {
+  const unversioned = {
+    user: { listFilter: 'issue', cacheTtlSeconds: 120 },
+    sites: {
+      'https://git.example.test': { maxItemsPerType: 20 },
+    },
+    position: { edge: 'left', ratio: 0.75 },
+  };
+  const migrated = migrateConfig(unversioned);
+  assert.equal(migrated.version, 1);
+  assert.deepEqual(migrated.userOverrides, { listFilter: true, cacheTtlSeconds: true });
+
+  const storage = createMemoryStorage({ [CONFIG_STORAGE_KEY]: unversioned });
+  const store = createConfigStore(storage);
+  const effective = await store.load('https://git.example.test');
+
+  assert.equal(effective.listFilter, 'issue');
+  assert.equal(effective.cacheTtlSeconds, 120);
+  assert.equal(effective.maxItemsPerType, 20);
+  assert.deepEqual(effective.position, { edge: 'left', ratio: 0.75 });
+  assert.equal(storage.data[CONFIG_STORAGE_KEY].version, 1);
+  assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].userOverrides, {
+    listFilter: true,
+    cacheTtlSeconds: true,
+  });
+  assert.equal(storage.calls.set.length, 1);
 });
 
 test('merges a site profile with user preferences while preserving protected limits', () => {

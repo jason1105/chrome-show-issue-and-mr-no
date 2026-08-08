@@ -402,7 +402,7 @@ async function stopProcess(child) {
   ]);
 }
 
-test('navigates current-project open items while preserving copy and SPA behavior', {
+test('verifies navigation, copy, SPA behavior, and persisted extension settings', {
   timeout: 45000,
 }, async () => {
   const chromeExecutable = findExecutable('CHROME_PATH', defaultChromePaths, 'Chrome/Chromium');
@@ -962,6 +962,109 @@ test('navigates current-project open items while preserving copy and SPA behavio
       `!document.querySelector('#gitlab-reference-badge-host')`,
       'badge removal outside a detail page',
     ), true);
+
+    const optionsUrl = `chrome-extension://${extensionId}/src/options.html`;
+    await cdpClient.send('Page.navigate', { url: optionsUrl });
+    const initialOptions = await waitForValue(cdpClient, `(() => {
+      const form = document.querySelector('#settings-form');
+      const status = document.querySelector('#status');
+      if (!form || !status || document.readyState !== 'complete') return null;
+      return {
+        listFilter: document.querySelector('#list-filter').value,
+        rememberSearch: document.querySelector('#remember-search').checked,
+        cacheTtlSeconds: document.querySelector('#cache-ttl').value,
+        maxItemsPerType: document.querySelector('#max-items').value,
+        loadingMode: document.querySelector('#loading-mode').value,
+        showLastRefresh: document.querySelector('#show-last-refresh').checked,
+        touchDrag: document.querySelector('#touch-drag').checked,
+        keyboardStep: document.querySelector('#keyboard-step').value,
+        status: status.textContent,
+      };
+    })()`, 'initial extension settings');
+    assert.deepEqual(initialOptions, {
+      listFilter: 'all',
+      rememberSearch: false,
+      cacheTtlSeconds: '60',
+      maxItemsPerType: '100',
+      loadingMode: 'parallel',
+      showLastRefresh: true,
+      touchDrag: true,
+      keyboardStep: '8',
+      status: '',
+    });
+
+    await cdpClient.evaluate(`(() => {
+      document.querySelector('#list-filter').value = 'issue';
+      document.querySelector('#remember-search').checked = true;
+      document.querySelector('#cache-ttl').value = '120';
+      document.querySelector('#max-items').value = '25';
+      document.querySelector('#loading-mode').value = 'sequential';
+      document.querySelector('#show-last-refresh').checked = false;
+      document.querySelector('#touch-drag').checked = false;
+      document.querySelector('#keyboard-step').value = '12';
+      document.querySelector('#settings-form').requestSubmit();
+    })()`);
+    assert.equal(await waitForValue(cdpClient, `(() => {
+      const status = document.querySelector('#status');
+      return status?.textContent === '设置已保存'
+        && status.getAttribute('data-status-kind') === 'success';
+    })()`, 'settings save feedback'), true);
+
+    await cdpClient.send('Page.reload');
+    const persistedOptions = await waitForValue(cdpClient, `(() => {
+      const status = document.querySelector('#status');
+      if (!status || status.textContent !== '' || document.readyState !== 'complete') return null;
+      const values = {
+        listFilter: document.querySelector('#list-filter')?.value,
+        rememberSearch: document.querySelector('#remember-search')?.checked,
+        cacheTtlSeconds: document.querySelector('#cache-ttl')?.value,
+        maxItemsPerType: document.querySelector('#max-items')?.value,
+        loadingMode: document.querySelector('#loading-mode')?.value,
+        showLastRefresh: document.querySelector('#show-last-refresh')?.checked,
+        touchDrag: document.querySelector('#touch-drag')?.checked,
+        keyboardStep: document.querySelector('#keyboard-step')?.value,
+      };
+      return Object.values(values).some((value) => value === undefined) ? null : values;
+    })()`, 'persisted extension settings after reload');
+    assert.deepEqual(persistedOptions, {
+      listFilter: 'issue',
+      rememberSearch: true,
+      cacheTtlSeconds: '120',
+      maxItemsPerType: '25',
+      loadingMode: 'sequential',
+      showLastRefresh: false,
+      touchDrag: false,
+      keyboardStep: '12',
+    });
+
+    await cdpClient.evaluate(`document.querySelector('#reset-settings').click()`);
+    assert.equal(await waitForValue(cdpClient, `(() => {
+      const status = document.querySelector('#status');
+      return status?.textContent === '已恢复默认设置'
+        && status.getAttribute('data-status-kind') === 'success'
+        && document.querySelector('#list-filter')?.value === 'all'
+        && document.querySelector('#remember-search')?.checked === false
+        && document.querySelector('#cache-ttl')?.value === '60'
+        && document.querySelector('#max-items')?.value === '100'
+        && document.querySelector('#loading-mode')?.value === 'parallel'
+        && document.querySelector('#show-last-refresh')?.checked === true
+        && document.querySelector('#touch-drag')?.checked === true
+        && document.querySelector('#keyboard-step')?.value === '8';
+    })()`, 'restored default extension settings'), true);
+
+    await cdpClient.send('Page.reload');
+    assert.equal(await waitForValue(cdpClient, `(() => (
+      document.readyState === 'complete'
+      && document.querySelector('#status')?.textContent === ''
+      && document.querySelector('#list-filter')?.value === 'all'
+      && document.querySelector('#remember-search')?.checked === false
+      && document.querySelector('#cache-ttl')?.value === '60'
+      && document.querySelector('#max-items')?.value === '100'
+      && document.querySelector('#loading-mode')?.value === 'parallel'
+      && document.querySelector('#show-last-refresh')?.checked === true
+      && document.querySelector('#touch-drag')?.checked === true
+      && document.querySelector('#keyboard-step')?.value === '8'
+    ))()`, 'persisted default settings after reset'), true);
   } catch (error) {
     error.message += `\nChromeDriver output:\n${driverLogs.join('').trim() || '(empty)'}`;
     throw error;
