@@ -519,6 +519,7 @@
     const host = root.document.getElementById(HOST_ID);
     if (!host) return;
     const rect = host.getBoundingClientRect();
+    flushScheduledPositionSave();
     positionGeneration += 1;
     drag = {
       pointerId: event.pointerId,

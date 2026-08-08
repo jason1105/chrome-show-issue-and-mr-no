@@ -1173,6 +1173,32 @@ test('coalesces repeated keyboard position changes into one storage write', asyn
   assert.equal(rendered.panel.children[0], initialPanelChild);
 });
 
+test('flushes a pending keyboard position before a subsequent drag save', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15');
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  rendered.host.setBoundingClientRect({ left: 560, top: 8, width: 160, height: 30 });
+
+  rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
+  assert.equal(harness.storageCalls.set.length, 0);
+
+  dispatchPointer(rendered.handle, 'pointerdown', 568, 20);
+  dispatchPointer(rendered.handle, 'pointermove', 12, 500);
+  dispatchPointer(rendered.handle, 'pointerup', 12, 500);
+  await harness.flushMicrotasks();
+
+  assert.equal(harness.storageCalls.set.length, 2);
+  const savedPositions = harness.storageCalls.set.map(
+    (value) => value[CONFIG_STORAGE_KEY].position,
+  );
+  assert.equal(savedPositions[0].edge, 'top');
+  assert.equal(savedPositions[1].edge, 'left');
+  assert.equal(typeof savedPositions[1].ratio, 'number');
+  assert.ok(savedPositions[1].ratio > 0 && savedPositions[1].ratio < 1);
+  assert.equal(rendered.host.getAttribute('data-edge'), 'left');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 8);
+});
+
 test('applies a persisted position update without rebuilding the navigation panel', async () => {
   const initialConfig = {
     version: 1,
