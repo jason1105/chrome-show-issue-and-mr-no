@@ -253,3 +253,20 @@ test('reset restores defaults and clears the stored legacy position', async () =
   assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].position, DEFAULT_POSITION);
   assert.deepEqual(storage.calls.remove, [LEGACY_POSITION_STORAGE_KEY]);
 });
+
+test('keeps a reset position when legacy cleanup fails', async () => {
+  const storage = createMemoryStorage({
+    [CONFIG_STORAGE_KEY]: {
+      version: 1,
+      position: { edge: 'right', ratio: 0.8 },
+    },
+    [LEGACY_POSITION_STORAGE_KEY]: { edge: 'right', ratio: 0.8 },
+  });
+  storage.remove = () => Promise.reject(new Error('cleanup unavailable'));
+  const store = createConfigStore(storage);
+
+  const effective = await store.resetPosition('https://git.example.test');
+
+  assert.deepEqual(effective.position, DEFAULT_POSITION);
+  assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].position, DEFAULT_POSITION);
+});

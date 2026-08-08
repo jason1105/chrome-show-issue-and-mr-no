@@ -341,7 +341,11 @@
         config.position = { ...DEFAULT_POSITION };
         config = normalizeConfig(config);
         await persist();
-        await removeLegacyPosition();
+        try {
+          await removeLegacyPosition();
+        } catch {
+          // The versioned position is already durable; stale legacy data is harmless.
+        }
         return getEffective(origin);
       });
     }
