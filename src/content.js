@@ -38,6 +38,7 @@
     ? configApi.getEffectiveConfig(configApi.getDefaultConfig(), initialOrigin)
     : {
       listFilter: 'all',
+      rememberSearch: true,
       cacheTtlSeconds: 60,
       maxItemsPerType: 100,
       loadingMode: 'parallel',
@@ -45,6 +46,7 @@
       touchDrag: true,
       keyboardStep: 8,
       position: { ...DEFAULT_POSITION },
+      searchState: { query: '', listFilter: null },
     };
 
   if (
@@ -73,7 +75,11 @@
   let pendingPositionSave = null;
   let persistedPosition = { ...DEFAULT_POSITION };
   let drag = null;
-  let activeConfig = { ...defaultConfig, position: { ...defaultConfig.position } };
+  let activeConfig = {
+    ...defaultConfig,
+    position: { ...defaultConfig.position },
+    searchState: { ...defaultConfig.searchState },
+  };
   const configStore = configApi.createConfigStore(root.chrome?.storage?.local, {
     storageChangeEvents: root.chrome?.storage?.onChanged,
     onConfigChanged() {
@@ -96,6 +102,9 @@
     lastLoadedAt: null,
     requestGeneration: 0,
     pending: null,
+    query: defaultConfig.searchState?.query || '',
+    listFilter: defaultConfig.searchState?.listFilter || defaultConfig.listFilter || 'all',
+    searchOwned: false,
   };
 
   function formatReference(reference) {
@@ -123,19 +132,46 @@
   }
 
   function getVisibleKinds() {
-    if (activeConfig.listFilter === 'issue') return ['issue'];
-    if (activeConfig.listFilter === 'merge-request') return ['merge-request'];
+    if (navigation.listFilter === 'issue') return ['issue'];
+    if (navigation.listFilter === 'merge-request') return ['merge-request'];
     return ['issue', 'merge-request'];
-  }
-
-  function isVisibleKind(kind) {
-    return getVisibleKinds().includes(kind);
   }
 
   function isCurrentCache() {
     return navigation.cache?.key === navigation.projectKey
-      && navigation.cache?.listFilter === activeConfig.listFilter
       && navigation.cache?.maxItemsPerType === activeConfig.maxItemsPerType;
+  }
+
+  function itemMatchesQuery(item, query) {
+    const normalized = query.trim();
+    if (!normalized) return true;
+
+    const issueReference = normalized.match(/^#([1-9][0-9]*)$/);
+    if (issueReference) return item.kind === 'issue' && item.iid === issueReference[1];
+
+    const mergeRequestReference = normalized.match(/^!([1-9][0-9]*)$/);
+    if (mergeRequestReference) {
+      return item.kind === 'merge-request' && item.iid === mergeRequestReference[1];
+    }
+
+    if (/^[1-9][0-9]*$/.test(normalized)) return item.iid === normalized;
+    return item.title.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());
+  }
+
+  function filterOpenItems(items) {
+    return Array.isArray(items)
+      ? items.filter((item) => itemMatchesQuery(item, navigation.query))
+      : items;
+  }
+
+  function persistSearchState() {
+    if (!activeConfig.rememberSearch) return;
+    Promise.resolve(configStore.setSearchState({
+      query: navigation.query,
+      listFilter: navigation.listFilter,
+    }, getCurrentOrigin())).catch(() => {
+      // Search remains usable in this content-script session when persistence fails.
+    });
   }
 
   function buildItemsApiUrl(reference, resource, page, perPage) {
@@ -909,8 +945,29 @@
   function renderNavigationPanel(host) {
     const { panel, trigger } = getBadgeParts(host);
     if (!panel || !trigger) return;
-    const restoreRefreshFocus = host.shadowRoot?.activeElement
-      ?.matches?.('[data-refresh-open-items]');
+    const activeElement = host.shadowRoot?.activeElement;
+    const focusedControl = activeElement?.getAttribute?.('data-open-items-filter')
+      || (activeElement?.matches?.('[data-refresh-open-items]') ? 'refresh' : null)
+      || (activeElement?.matches?.('[data-open-items-search]') ? 'search' : null);
+    const searchSelection = focusedControl === 'search'
+      ? { start: activeElement.selectionStart, end: activeElement.selectionEnd }
+      : null;
+    const filteredIssues = filterOpenItems(navigation.issues);
+    const filteredMergeRequests = filterOpenItems(navigation.mergeRequests);
+    const visibleKinds = getVisibleKinds();
+    const totalCount = (
+      (visibleKinds.includes('issue') ? filteredIssues?.length || 0 : 0)
+      + (visibleKinds.includes('merge-request') ? filteredMergeRequests?.length || 0 : 0)
+    );
+    const rawVisibleCount = (
+      (visibleKinds.includes('issue') ? navigation.issues?.length || 0 : 0)
+      + (visibleKinds.includes('merge-request') ? navigation.mergeRequests?.length || 0 : 0)
+    );
+    const visibleGroupsReady = visibleKinds.every((kind) => (
+      kind === 'issue'
+        ? filteredIssues !== null && !navigation.errors.issues
+        : filteredMergeRequests !== null && !navigation.errors.mergeRequests
+    ));
 
     panel.hidden = !navigation.open;
     trigger.setAttribute('aria-expanded', navigation.open ? 'true' : 'false');
@@ -923,10 +980,7 @@
     headingText.textContent = 'Open items';
     const total = root.document.createElement('span');
     total.setAttribute('data-open-items-total', '');
-    total.textContent = String(
-      (isVisibleKind('issue') ? navigation.issues?.length || 0 : 0)
-      + (isVisibleKind('merge-request') ? navigation.mergeRequests?.length || 0 : 0),
-    );
+    total.textContent = String(totalCount);
     heading.append(headingText, total);
 
     if (activeConfig.showLastRefresh && Number.isFinite(navigation.lastLoadedAt)) {
@@ -949,7 +1003,36 @@
     refresh.addEventListener('click', handleRefresh);
     header.append(heading, refresh);
 
-    const children = [header];
+    const searchControls = root.document.createElement('div');
+    searchControls.setAttribute('data-open-items-controls', '');
+    const search = root.document.createElement('input');
+    search.setAttribute('type', 'search');
+    search.setAttribute('data-open-items-search', '');
+    search.setAttribute('aria-label', '搜索 Open items');
+    search.setAttribute('placeholder', '搜索编号或标题');
+    search.value = navigation.query;
+    search.addEventListener('input', handleSearchInput);
+
+    const filters = root.document.createElement('div');
+    filters.setAttribute('data-open-items-filters', '');
+    filters.setAttribute('role', 'group');
+    filters.setAttribute('aria-label', '筛选 Open items 类型');
+    for (const [kind, label] of [
+      ['all', '全部'],
+      ['issue', 'Issue'],
+      ['merge-request', 'MR'],
+    ]) {
+      const filter = root.document.createElement('button');
+      filter.setAttribute('type', 'button');
+      filter.setAttribute('data-open-items-filter', kind);
+      filter.setAttribute('aria-pressed', navigation.listFilter === kind ? 'true' : 'false');
+      filter.textContent = label;
+      filter.addEventListener('click', handleFilterClick);
+      filters.append(filter);
+    }
+    searchControls.append(search, filters);
+
+    const children = [header, searchControls];
     if (navigation.message) {
       const message = root.document.createElement('div');
       message.setAttribute('data-open-items-message', '');
@@ -957,15 +1040,29 @@
       message.textContent = navigation.message;
       children.push(message);
     }
-    if (isVisibleKind('issue')) {
-      children.push(createOpenItemsGroup('issues', navigation.issues, navigation.errors.issues));
-    }
-    if (isVisibleKind('merge-request')) {
-      children.push(createOpenItemsGroup(
-        'merge-requests',
-        navigation.mergeRequests,
-        navigation.errors.mergeRequests,
-      ));
+    if (visibleGroupsReady && totalCount === 0) {
+      const empty = root.document.createElement('div');
+      empty.setAttribute('data-open-items-empty', '');
+      empty.setAttribute('role', 'status');
+      empty.textContent = navigation.query.trim() === '' && rawVisibleCount === 0
+        ? '暂无 Open items'
+        : '没有匹配的 Open items';
+      children.push(empty);
+    } else {
+      if (visibleKinds.includes('issue')) {
+        children.push(createOpenItemsGroup(
+          'issues',
+          filteredIssues,
+          navigation.errors.issues,
+        ));
+      }
+      if (visibleKinds.includes('merge-request')) {
+        children.push(createOpenItemsGroup(
+          'merge-requests',
+          filteredMergeRequests,
+          navigation.errors.mergeRequests,
+        ));
+      }
     }
     renderingNavigationPanel = true;
     try {
@@ -973,7 +1070,16 @@
     } finally {
       renderingNavigationPanel = false;
     }
-    if (restoreRefreshFocus && navigation.open) refresh.focus();
+    if (!navigation.open || !focusedControl) return;
+    const nextFocusedControl = focusedControl === 'refresh'
+      ? refresh
+      : focusedControl === 'search'
+        ? search
+        : filters.querySelector(`[data-open-items-filter="${focusedControl}"]`);
+    nextFocusedControl?.focus();
+    if (searchSelection) {
+      search.setSelectionRange(searchSelection.start, searchSelection.end);
+    }
   }
 
   function isCurrentNavigationRequest(generation, projectKey, host) {
@@ -1017,7 +1123,7 @@
     navigation.message = '';
     renderNavigationPanel(host);
 
-    const kinds = getVisibleKinds();
+    const kinds = ['issue', 'merge-request'];
     const fetchOne = (kind) => fetchAllItems(reference, kind)
       .then((value) => ({ status: 'fulfilled', value }))
       .catch((reason) => ({ status: 'rejected', reason }));
@@ -1044,7 +1150,6 @@
         navigation.errors = { issues: false, mergeRequests: false };
         navigation.cache = {
           key: projectKey,
-          listFilter: activeConfig.listFilter,
           maxItemsPerType: activeConfig.maxItemsPerType,
           loadedAt: root.Date.now(),
           issues: navigation.issues,
@@ -1178,6 +1283,24 @@
     event.stopPropagation();
     event.currentTarget.setAttribute('aria-busy', 'true');
     if (!navigation.loading) loadOpenItems({ force: true });
+  }
+
+  function handleSearchInput(event) {
+    navigation.query = event.currentTarget.value;
+    navigation.searchOwned = true;
+    const host = root.document.getElementById(HOST_ID);
+    if (host) renderNavigationPanel(host);
+    persistSearchState();
+  }
+
+  function handleFilterClick(event) {
+    const nextFilter = event.currentTarget.getAttribute('data-open-items-filter');
+    if (!['all', 'issue', 'merge-request'].includes(nextFilter)) return;
+    navigation.listFilter = nextFilter;
+    navigation.searchOwned = true;
+    const host = root.document.getElementById(HOST_ID);
+    if (host) renderNavigationPanel(host);
+    persistSearchState();
   }
 
   function createBadgeHost() {
@@ -1453,6 +1576,87 @@
         to { transform: rotate(360deg); }
       }
 
+      [data-open-items-controls] {
+        box-sizing: border-box;
+        display: flex;
+        align-items: stretch;
+        gap: 7px;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(31, 41, 55, 0.12);
+        background: inherit;
+      }
+
+      [data-open-items-search] {
+        box-sizing: border-box;
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 30px;
+        margin: 0;
+        padding: 5px 9px;
+        border: 1px solid rgba(31, 41, 55, 0.28);
+        border-radius: 6px;
+        background: #ffffff;
+        color: #24292f;
+        font: 400 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        appearance: auto;
+      }
+
+      [data-open-items-search]::placeholder {
+        color: #6e7781;
+        opacity: 1;
+      }
+
+      [data-open-items-search]:focus {
+        border-color: #0969da;
+        box-shadow: 0 0 0 1px #0969da;
+        outline: none;
+      }
+
+      [data-open-items-filters] {
+        box-sizing: border-box;
+        display: inline-flex;
+        flex: 0 0 auto;
+        overflow: hidden;
+        border: 1px solid rgba(31, 41, 55, 0.24);
+        border-radius: 6px;
+      }
+
+      [data-open-items-filter] {
+        box-sizing: border-box;
+        min-height: 28px;
+        margin: 0;
+        padding: 4px 8px;
+        border: 0;
+        border-left: 1px solid rgba(31, 41, 55, 0.18);
+        border-radius: 0;
+        background: #ffffff;
+        color: #57606a;
+        font: 500 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        cursor: pointer;
+        appearance: none;
+      }
+
+      [data-open-items-filter]:first-child {
+        border-left: 0;
+      }
+
+      [data-open-items-filter]:hover {
+        background: rgba(31, 41, 55, 0.06);
+        color: #24292f;
+      }
+
+      [data-open-items-filter][aria-pressed="true"] {
+        background: #ddf4ff;
+        color: #0969da;
+      }
+
+      [data-open-items-filter]:focus-visible {
+        position: relative;
+        z-index: 1;
+        outline: 2px solid #0969da;
+        outline-offset: -2px;
+      }
+
       [data-open-items-message] {
         margin: 8px 10px 2px;
         padding: 7px 9px;
@@ -1482,6 +1686,13 @@
         padding: 9px 12px 10px;
         color: #6e7781;
         font-size: 12px;
+      }
+
+      [data-open-items-empty] {
+        padding: 28px 16px 30px;
+        color: #6e7781;
+        font-size: 12px;
+        text-align: center;
       }
 
       [data-open-item] {
@@ -1653,6 +1864,7 @@
         }
 
         [data-open-items-header],
+        [data-open-items-controls],
         [data-open-items-group] + [data-open-items-group] {
           border-color: rgba(255, 255, 255, 0.14);
         }
@@ -1665,8 +1877,39 @@
         [data-refresh-open-items],
         [data-open-items-group-heading],
         [data-open-items-status],
+        [data-open-items-empty],
         [data-last-refresh] {
           color: #b7bdc8;
+        }
+
+        [data-open-items-search] {
+          border-color: rgba(255, 255, 255, 0.26);
+          background: #1f2227;
+          color: #f0f2f5;
+        }
+
+        [data-open-items-search]::placeholder {
+          color: #8b949e;
+        }
+
+        [data-open-items-filters] {
+          border-color: rgba(255, 255, 255, 0.24);
+        }
+
+        [data-open-items-filter] {
+          border-left-color: rgba(255, 255, 255, 0.16);
+          background: #24272d;
+          color: #b7bdc8;
+        }
+
+        [data-open-items-filter]:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: #ffffff;
+        }
+
+        [data-open-items-filter][aria-pressed="true"] {
+          background: rgba(9, 105, 218, 0.28);
+          color: #79c0ff;
         }
 
         [data-refresh-open-items]:hover {
@@ -1700,6 +1943,21 @@
         [data-kind="merge-request"] {
           border-color: rgba(117, 170, 255, 0.55);
           color: #9ac1ff;
+        }
+      }
+
+      @media (max-width: 420px) {
+        [data-open-items-controls] {
+          flex-wrap: wrap;
+        }
+
+        [data-open-items-search],
+        [data-open-items-filters] {
+          flex-basis: 100%;
+        }
+
+        [data-open-items-filter] {
+          flex: 1 1 0;
         }
       }
     `;
@@ -1891,10 +2149,30 @@
     configurationReady = Promise.resolve(configStore.load(origin))
       .then((effective) => {
         if (destroyed || generation !== configurationGeneration) return;
-        const requestPolicyChanged = previous.listFilter !== effective.listFilter
-          || previous.maxItemsPerType !== effective.maxItemsPerType
+        const requestPolicyChanged = previous.maxItemsPerType !== effective.maxItemsPerType
           || previous.loadingMode !== effective.loadingMode;
-        const navigationDisplayChanged = previous.showLastRefresh !== effective.showLastRefresh;
+        let searchDisplayChanged = false;
+        const memoryDisabled = previous.rememberSearch && !effective.rememberSearch;
+        if (memoryDisabled) {
+          searchDisplayChanged = navigation.query !== ''
+            || navigation.listFilter !== (effective.listFilter || 'all');
+          navigation.query = '';
+          navigation.listFilter = effective.listFilter || 'all';
+          navigation.searchOwned = false;
+        } else if (!navigation.searchOwned) {
+          const nextQuery = effective.rememberSearch
+            ? effective.searchState?.query || ''
+            : '';
+          const nextListFilter = (effective.rememberSearch
+            ? effective.searchState?.listFilter
+            : null) || effective.listFilter || 'all';
+          searchDisplayChanged = navigation.query !== nextQuery
+            || navigation.listFilter !== nextListFilter;
+          navigation.query = nextQuery;
+          navigation.listFilter = nextListFilter;
+        }
+        const navigationDisplayChanged = searchDisplayChanged
+          || previous.showLastRefresh !== effective.showLastRefresh;
         const nextPosition = configApi.normalizePosition(effective.position);
         const preserveLocalPosition = Boolean(drag || pendingPositionSave);
         if (!preserveLocalPosition) persistedPosition = { ...nextPosition };

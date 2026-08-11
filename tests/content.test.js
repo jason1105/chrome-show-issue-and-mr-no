@@ -90,6 +90,9 @@ class FakeNode extends FakeEventTarget {
     this.style = createFakeStyle();
     this.value = '';
     this.selected = false;
+    this.selectionStart = 0;
+    this.selectionEnd = 0;
+    this.activeElement = null;
     this.ownerDocument = null;
     this.rect = { left: 0, top: 0, width: 160, height: 30 };
     this.capturedPointerIds = new Set();
@@ -175,7 +178,20 @@ class FakeNode extends FakeEventTarget {
   focus() {
     if (!this.ownerDocument) return;
     this.ownerDocument.activeElement = this;
+    let ancestor = this.parentNode;
+    while (ancestor) {
+      if (ancestor.tagName === '#SHADOW-ROOT') {
+        ancestor.activeElement = this;
+        break;
+      }
+      ancestor = ancestor.parentNode;
+    }
     this.dispatchEvent({ type: 'focus' });
+  }
+
+  setSelectionRange(start, end) {
+    this.selectionStart = start;
+    this.selectionEnd = end;
   }
 
   select() {
@@ -507,6 +523,10 @@ function getBadge(document) {
     announcement: shadow?.querySelector('[data-copy-announcement]') || null,
     panel: shadow?.querySelector('[data-open-items-panel]') || null,
     refresh: shadow?.querySelector('[data-refresh-open-items]') || null,
+    search: shadow?.querySelector('[data-open-items-search]') || null,
+    filterAll: shadow?.querySelector('[data-open-items-filter="all"]') || null,
+    filterIssue: shadow?.querySelector('[data-open-items-filter="issue"]') || null,
+    filterMergeRequest: shadow?.querySelector('[data-open-items-filter="merge-request"]') || null,
     style: shadow?.querySelector('style') || null,
   };
 }
@@ -539,6 +559,26 @@ async function openAndLoad(harness) {
   const rendered = getBadge(harness.document);
   rendered.trigger.dispatchEvent({ type: 'focus' });
   await harness.flushMicrotasks();
+  return getBadge(harness.document);
+}
+
+function searchOpenItems(harness, query) {
+  const rendered = getBadge(harness.document);
+  rendered.search.value = query;
+  rendered.search.selectionStart = query.length;
+  rendered.search.selectionEnd = query.length;
+  rendered.search.dispatchEvent({ type: 'input' });
+  return getBadge(harness.document);
+}
+
+function filterOpenItems(harness, kind) {
+  const rendered = getBadge(harness.document);
+  const control = kind === 'issue'
+    ? rendered.filterIssue
+    : kind === 'merge-request'
+      ? rendered.filterMergeRequest
+      : rendered.filterAll;
+  control.dispatchEvent({ type: 'click' });
   return getBadge(harness.document);
 }
 
@@ -1055,7 +1095,311 @@ test('loads Open items with encoded project API URLs, pagination, and current se
   );
 });
 
-test('applies list filter and per-type item limit from the configuration layer', async () => {
+test('renders an accessible local search field and type filters', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+
+  const rendered = await openAndLoad(harness);
+
+  assert.equal(rendered.search.tagName, 'INPUT');
+  assert.equal(rendered.search.getAttribute('type'), 'search');
+  assert.equal(rendered.search.getAttribute('aria-label'), '搜索 Open items');
+  assert.equal(rendered.search.getAttribute('placeholder'), '搜索编号或标题');
+  assert.equal(rendered.filterAll.tagName, 'BUTTON');
+  assert.equal(rendered.filterIssue.tagName, 'BUTTON');
+  assert.equal(rendered.filterMergeRequest.tagName, 'BUTTON');
+  assert.equal(rendered.filterAll.textContent, '全部');
+  assert.equal(rendered.filterIssue.textContent, 'Issue');
+  assert.equal(rendered.filterMergeRequest.textContent, 'MR');
+  assert.equal(rendered.filterAll.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.filterIssue.getAttribute('aria-pressed'), 'false');
+  assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'false');
+});
+
+test('searches exact references and case-insensitive title substrings locally', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/12', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 12, title: 'Release blocker' },
+        { iid: 123, title: 'Unrelated issue' },
+      ]),
+      jsonResponse([
+        { iid: 12, title: 'Release notes' },
+        { iid: 456, title: 'Hotfix MR' },
+      ]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  let rendered = searchOpenItems(harness, '#12');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['issue', '12']],
+  );
+
+  rendered = searchOpenItems(harness, '!456');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['merge-request', '456']],
+  );
+
+  rendered = searchOpenItems(harness, '12');
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+
+  rendered.search.focus();
+  rendered.search.value = '  RELEASE  ';
+  rendered.search.setSelectionRange(3, 8);
+  rendered.search.dispatchEvent({ type: 'input' });
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.search.value, '  RELEASE  ');
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.search);
+  assert.equal(rendered.search.selectionStart, 3);
+  assert.equal(rendered.search.selectionEnd, 8);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+  assert.equal(harness.fetchCalls.length, 2);
+});
+
+test('combines local text search with type filters without refetching', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Current release issue' },
+        { iid: 16, title: 'Documentation' },
+      ]),
+      jsonResponse([
+        { iid: 8, title: 'Release MR' },
+        { iid: 9, title: 'Maintenance' },
+      ]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  searchOpenItems(harness, 'release');
+  let rendered = filterOpenItems(harness, 'merge-request');
+  assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['8'],
+  );
+
+  rendered = filterOpenItems(harness, 'issue');
+  assert.equal(rendered.filterIssue.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['15'],
+  );
+
+  rendered = searchOpenItems(harness, '');
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '2');
+  assert.equal(harness.fetchCalls.length, 2);
+});
+
+test('hides a nonmatching current item and distinguishes no matches from loading and errors', async () => {
+  const issues = deferred();
+  const mergeRequests = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [issues, mergeRequests],
+  });
+
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  let rendered = searchOpenItems(harness, 'missing');
+  assert.equal(rendered.panel.querySelector('[data-open-items-empty]'), null);
+  assert.equal(
+    rendered.panel.querySelectorAll('[data-open-items-state="loading"]').length,
+    2,
+  );
+
+  issues.resolve(jsonResponse([{ iid: 15, title: 'Current issue' }]));
+  mergeRequests.reject(new Error('MRs unavailable'));
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.panel.querySelector('[data-current-open-item]'), null);
+  assert.equal(rendered.panel.querySelector('[data-open-items-empty]'), null);
+  assert.ok(rendered.panel.querySelector('[data-open-items-state="error"]'));
+});
+
+test('shows one clear empty state when loaded items do not match', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Current issue' }]),
+      jsonResponse([{ iid: 8, title: 'Open MR' }]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  const rendered = searchOpenItems(harness, 'missing');
+  const empty = rendered.panel.querySelector('[data-open-items-empty]');
+  assert.equal(empty.getAttribute('role'), 'status');
+  assert.equal(empty.textContent, '没有匹配的 Open items');
+  assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 0);
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
+});
+
+test('distinguishes a project with no Open items from filtered no matches', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+
+  const rendered = await openAndLoad(harness);
+  const empty = rendered.panel.querySelector('[data-open-items-empty]');
+  assert.equal(empty.getAttribute('role'), 'status');
+  assert.equal(empty.textContent, '暂无 Open items');
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
+});
+
+test('keeps search, filter, panel state, and refresh focus during a manual refresh', async () => {
+  const issueRefresh = deferred();
+  const mergeRequestRefresh = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Release issue' }]),
+      jsonResponse([{ iid: 8, title: 'Release MR' }]),
+      issueRefresh,
+      mergeRequestRefresh,
+    ],
+  });
+  await openAndLoad(harness);
+  searchOpenItems(harness, 'release');
+  let rendered = filterOpenItems(harness, 'merge-request');
+  rendered.refresh.focus();
+  rendered.refresh.dispatchEvent({ type: 'click' });
+
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.search.value, 'release');
+  assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.refresh);
+
+  issueRefresh.resolve(jsonResponse([{ iid: 16, title: 'New issue' }]));
+  mergeRequestRefresh.resolve(jsonResponse([{ iid: 9, title: 'Release replacement' }]));
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.search.value, 'release');
+  assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.refresh);
+  assert.equal(rendered.panel.querySelector('[data-open-item]').getAttribute('data-iid'), '9');
+});
+
+test('remembers search state across content contexts when enabled by default', async () => {
+  const first = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  await openAndLoad(first);
+  searchOpenItems(first, '#123');
+  filterOpenItems(first, 'issue');
+  await first.flushMicrotasks();
+
+  assert.equal(first.storageData[CONFIG_STORAGE_KEY].searchState.query, '#123');
+  assert.equal(first.storageData[CONFIG_STORAGE_KEY].searchState.listFilter, 'issue');
+
+  const second = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: { [CONFIG_STORAGE_KEY]: first.storageData[CONFIG_STORAGE_KEY] },
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const restored = await openAndLoad(second);
+  assert.equal(restored.search.value, '#123');
+  assert.equal(restored.filterIssue.getAttribute('aria-pressed'), 'true');
+});
+
+test('keeps search state in the current session without storage writes when memory is disabled', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 2,
+        user: { rememberSearch: false },
+        userOverrides: { rememberSearch: true },
+      },
+    },
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  let rendered = await openAndLoad(harness);
+  const writesBeforeSearch = harness.storageCalls.set.length;
+  searchOpenItems(harness, 'release');
+  filterOpenItems(harness, 'merge-request');
+  await harness.flushMicrotasks();
+  assert.equal(harness.storageCalls.set.length, writesBeforeSearch);
+
+  rendered = getBadge(harness.document);
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'Escape' });
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.search.value, 'release');
+  assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'true');
+});
+
+test('ignores stale persisted search state when search memory is disabled', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 2,
+        user: { listFilter: 'issue', rememberSearch: false },
+        userOverrides: { listFilter: true, rememberSearch: true },
+        searchState: { query: 'stale query', listFilter: 'merge-request' },
+      },
+    },
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+
+  const rendered = await openAndLoad(harness);
+
+  assert.equal(rendered.search.value, '');
+  assert.equal(rendered.filterIssue.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'false');
+});
+
+test('clears locally owned search when another context disables search memory', async () => {
+  const initialConfig = {
+    version: 2,
+    user: { listFilter: 'issue', rememberSearch: true },
+    userOverrides: { listFilter: true, rememberSearch: true },
+    searchState: { query: '', listFilter: 'issue' },
+  };
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: { [CONFIG_STORAGE_KEY]: initialConfig },
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Release issue' }]),
+      jsonResponse([{ iid: 8, title: 'Release MR' }]),
+    ],
+  });
+  await openAndLoad(harness);
+  searchOpenItems(harness, 'release');
+  filterOpenItems(harness, 'merge-request');
+  await harness.flushMicrotasks();
+  const fetchCount = harness.fetchCalls.length;
+
+  const nextConfig = {
+    ...harness.storageData[CONFIG_STORAGE_KEY],
+    user: { listFilter: 'issue', rememberSearch: false },
+    userOverrides: { listFilter: true, rememberSearch: true },
+    searchState: { query: '', listFilter: 'issue' },
+  };
+  harness.storageData[CONFIG_STORAGE_KEY] = nextConfig;
+  await harness.dispatchStorageChanged({
+    [CONFIG_STORAGE_KEY]: {
+      oldValue: initialConfig,
+      newValue: nextConfig,
+    },
+  });
+  await harness.flushMicrotasks();
+
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.search.value, '');
+  assert.equal(rendered.filterIssue.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'false');
+  assert.equal(harness.fetchCalls.length, fetchCount);
+});
+
+test('applies the default list filter while still loading both item types', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     storageData: {
       [CONFIG_STORAGE_KEY]: {
@@ -1063,15 +1407,19 @@ test('applies list filter and per-type item limit from the configuration layer',
         user: { listFilter: 'issue', maxItemsPerType: 1 },
       },
     },
-    fetchResults: [jsonResponse([
-      { iid: 15, title: 'Current issue' },
-      { iid: 16, title: 'Second issue' },
-    ])],
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Current issue' },
+        { iid: 16, title: 'Second issue' },
+      ]),
+      jsonResponse([{ iid: 8, title: 'Open MR' }]),
+    ],
   });
 
   const rendered = await openAndLoad(harness);
-  assert.equal(harness.fetchCalls.length, 1);
+  assert.equal(harness.fetchCalls.length, 2);
   assert.match(harness.fetchCalls[0].url, /issues\?[^#]*per_page=1/);
+  assert.match(harness.fetchCalls[1].url, /merge_requests\?[^#]*per_page=1/);
   assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 1);
   assert.equal(rendered.panel.querySelector('[data-open-items-group]').getAttribute('data-open-items-group'), 'issues');
   assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 1);
@@ -1138,6 +1486,7 @@ test('disables touch dragging and uses the configured keyboard step', async () =
   await harness.flushMicrotasks();
   const rendered = getBadge(harness.document);
   assert.equal(rendered.host.getAttribute('data-touch-drag'), 'false');
+  const writesBeforeMove = harness.storageCalls.set.length;
 
   const touchDown = dispatchPointer(rendered.handle, 'pointerdown', 568, 20, {
     pointerType: 'touch',
@@ -1147,10 +1496,10 @@ test('disables touch dragging and uses the configured keyboard step', async () =
 
   rendered.handle.dispatchEvent({ type: 'keydown', key: 'ArrowRight' });
   assert.equal(readPixelStyle(rendered.host, '--reference-left'), 580);
-  assert.equal(harness.storageCalls.set.length, 0);
+  assert.equal(harness.storageCalls.set.length, writesBeforeMove);
   harness.advanceTimersBy(200);
   await harness.flushMicrotasks();
-  assert.equal(harness.storageCalls.set.length, 1);
+  assert.equal(harness.storageCalls.set.length, writesBeforeMove + 1);
 });
 
 test('coalesces repeated keyboard position changes into one storage write', async () => {
@@ -1247,7 +1596,7 @@ test('restores the persisted position when a position write fails', async () => 
   assert.equal(readPixelStyle(rendered.host, '--reference-left'), 1112);
 });
 
-test('applies configuration changes to an already open GitLab page', async () => {
+test('applies display configuration changes without refetching loaded Open items', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     storageData: {
       [CONFIG_STORAGE_KEY]: {
@@ -1258,7 +1607,6 @@ test('applies configuration changes to an already open GitLab page', async () =>
     fetchResults: [
       jsonResponse([{ iid: 15, title: 'Current issue' }]),
       jsonResponse([{ iid: 16, title: 'Open MR' }]),
-      jsonResponse([{ iid: 15, title: 'Filtered issue' }]),
     ],
   });
   let rendered = await openAndLoad(harness);
@@ -1280,8 +1628,7 @@ test('applies configuration changes to an already open GitLab page', async () =>
   assert.equal(rendered.host.getAttribute('data-touch-drag'), 'false');
   assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 1);
   assert.equal(rendered.panel.querySelector('[data-open-items-group]').getAttribute('data-open-items-group'), 'issues');
-  assert.equal(harness.fetchCalls.length, 3);
-  assert.match(harness.fetchCalls[2].url, /\/issues\?/);
+  assert.equal(harness.fetchCalls.length, 2);
 });
 
 test('reuses a complete snapshot for 60 seconds and refreshes expired data', async () => {

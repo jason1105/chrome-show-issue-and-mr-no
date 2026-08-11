@@ -7,13 +7,14 @@
 })(typeof globalThis === 'undefined' ? this : globalThis, () => {
   'use strict';
 
-  const CONFIG_VERSION = 1;
+  const CONFIG_VERSION = 2;
   const CONFIG_STORAGE_KEY = 'gitlabReferenceConfig';
   const LEGACY_POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
   const DEFAULT_POSITION = Object.freeze({ edge: 'top', ratio: 0.5 });
+  const DEFAULT_SEARCH_STATE = Object.freeze({ query: '', listFilter: null });
   const DEFAULT_USER = Object.freeze({
     listFilter: 'all',
-    rememberSearch: false,
+    rememberSearch: true,
     cacheTtlSeconds: 60,
     maxItemsPerType: 100,
     loadingMode: 'parallel',
@@ -41,6 +42,24 @@
         version: 1,
         user,
         userOverrides,
+      };
+    },
+    1(input) {
+      const user = input.user && typeof input.user === 'object' ? { ...input.user } : {};
+      const userOverrides = input.userOverrides && typeof input.userOverrides === 'object'
+        ? { ...input.userOverrides }
+        : Object.fromEntries(Object.keys(DEFAULT_USER)
+          .filter((name) => Object.prototype.hasOwnProperty.call(user, name))
+          .map((name) => [name, true]));
+      const explicitlyDisabled = userOverrides.rememberSearch === true
+        && user.rememberSearch === false;
+      user.rememberSearch = explicitlyDisabled ? false : true;
+      return {
+        ...input,
+        version: 2,
+        user,
+        userOverrides,
+        searchState: { ...DEFAULT_SEARCH_STATE },
       };
     },
   });
@@ -71,6 +90,17 @@
     const edge = value.edge;
     const ratio = value.ratio;
     return { edge, ratio };
+  }
+
+  function normalizeSearchState(value) {
+    if (!value || typeof value !== 'object') return { ...DEFAULT_SEARCH_STATE };
+    const query = typeof value.query === 'string' ? value.query : DEFAULT_SEARCH_STATE.query;
+    const listFilter = value.listFilter === 'issue'
+      || value.listFilter === 'merge-request'
+      || value.listFilter === 'all'
+      ? value.listFilter
+      : DEFAULT_SEARCH_STATE.listFilter;
+    return { query, listFilter };
   }
 
   function normalizePreference(name, value, fallback) {
@@ -129,6 +159,7 @@
       userOverrides: {},
       sites: {},
       position: { ...DEFAULT_POSITION },
+      searchState: { ...DEFAULT_SEARCH_STATE },
     };
   }
 
@@ -165,6 +196,7 @@
       userOverrides,
       sites,
       position: normalizePosition(input.position),
+      searchState: normalizeSearchState(input.searchState),
     };
   }
 
@@ -182,6 +214,7 @@
     return {
       ...preferences,
       position: { ...normalized.position },
+      searchState: { ...normalized.searchState },
       protected: { ...PROTECTED_CONFIG },
     };
   }
@@ -305,6 +338,9 @@
           config.user[name] = normalizePreference(name, userPatch[name], DEFAULT_USER[name]);
           config.userOverrides[name] = true;
         }
+        if (userPatch?.rememberSearch === false) {
+          config.searchState = { ...DEFAULT_SEARCH_STATE };
+        }
         config = normalizeConfig(config);
         await persist();
         return getEffective(origin);
@@ -328,6 +364,19 @@
         await ensureLoaded();
         await refreshFromStorage();
         config.position = normalizePosition(nextPosition);
+        config = normalizeConfig(config);
+        await persist();
+        return getEffective(origin);
+      });
+    }
+
+    async function setSearchState(nextSearchState, origin) {
+      return enqueueMutation(async () => {
+        await ensureLoaded();
+        await refreshFromStorage();
+        config.searchState = getEffective(origin).rememberSearch
+          ? normalizeSearchState(nextSearchState)
+          : { ...DEFAULT_SEARCH_STATE };
         config = normalizeConfig(config);
         await persist();
         return getEffective(origin);
@@ -411,6 +460,7 @@
       save,
       saveSite,
       setPosition,
+      setSearchState,
       getConfig: () => clone(config),
       dispose,
     };
@@ -421,6 +471,7 @@
     CONFIG_STORAGE_KEY,
     LEGACY_POSITION_STORAGE_KEY,
     DEFAULT_POSITION,
+    DEFAULT_SEARCH_STATE,
     DEFAULT_USER,
     PROTECTED_CONFIG,
     createConfigStore,
@@ -429,5 +480,6 @@
     migrateConfig,
     normalizeConfig,
     normalizePosition,
+    normalizeSearchState,
   };
 });

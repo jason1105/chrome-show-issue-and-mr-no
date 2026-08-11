@@ -122,7 +122,7 @@ test('loads, saves, and resets settings through the configuration store', async 
 
   await controller.init();
   assert.equal(document.fields['list-filter'].value, 'all');
-  assert.equal(document.fields['remember-search'].checked, false);
+  assert.equal(document.fields['remember-search'].checked, true);
   assert.equal(document.fields['cache-ttl'].value, '60');
 
   document.fields['list-filter'].value = 'merge-request';
