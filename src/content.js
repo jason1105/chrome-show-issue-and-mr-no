@@ -942,6 +942,90 @@
     }
   }
 
+  function getNavigationPanelState() {
+    const filteredIssues = filterOpenItems(navigation.issues);
+    const filteredMergeRequests = filterOpenItems(navigation.mergeRequests);
+    const visibleKinds = getVisibleKinds();
+    const totalCount = (
+      (visibleKinds.includes('issue') ? filteredIssues?.length || 0 : 0)
+      + (visibleKinds.includes('merge-request') ? filteredMergeRequests?.length || 0 : 0)
+    );
+    const visibleGroupsReady = visibleKinds.every((kind) => (
+      kind === 'issue'
+        ? filteredIssues !== null && !navigation.errors.issues
+        : filteredMergeRequests !== null && !navigation.errors.mergeRequests
+    ));
+    const allGroupsReady = navigation.issues !== null
+      && navigation.mergeRequests !== null
+      && !navigation.errors.issues
+      && !navigation.errors.mergeRequests;
+    const projectHasNoOpenItems = allGroupsReady
+      && navigation.issues.length + navigation.mergeRequests.length === 0;
+
+    return {
+      filteredIssues,
+      filteredMergeRequests,
+      projectHasNoOpenItems,
+      totalCount,
+      visibleGroupsReady,
+      visibleKinds,
+    };
+  }
+
+  function createNavigationResultChildren(state) {
+    const children = [];
+    if (navigation.message) {
+      const message = root.document.createElement('div');
+      message.setAttribute('data-open-items-message', '');
+      message.setAttribute('role', 'status');
+      message.textContent = navigation.message;
+      children.push(message);
+    }
+    if (state.visibleGroupsReady && state.totalCount === 0) {
+      const empty = root.document.createElement('div');
+      empty.setAttribute('data-open-items-empty', '');
+      empty.setAttribute('role', 'status');
+      empty.textContent = navigation.query.trim() === '' && state.projectHasNoOpenItems
+        ? '暂无 Open items'
+        : '没有匹配的 Open items';
+      children.push(empty);
+      return children;
+    }
+    if (state.visibleKinds.includes('issue')) {
+      children.push(createOpenItemsGroup(
+        'issues',
+        state.filteredIssues,
+        navigation.errors.issues,
+      ));
+    }
+    if (state.visibleKinds.includes('merge-request')) {
+      children.push(createOpenItemsGroup(
+        'merge-requests',
+        state.filteredMergeRequests,
+        navigation.errors.mergeRequests,
+      ));
+    }
+    return children;
+  }
+
+  function renderNavigationResults(host) {
+    const { panel } = getBadgeParts(host);
+    const total = panel?.querySelector('[data-open-items-total]');
+    const results = panel?.querySelector('[data-open-items-results]');
+    if (!total || !results) {
+      renderNavigationPanel(host);
+      return;
+    }
+    const state = getNavigationPanelState();
+    total.textContent = String(state.totalCount);
+    renderingNavigationPanel = true;
+    try {
+      results.replaceChildren(...createNavigationResultChildren(state));
+    } finally {
+      renderingNavigationPanel = false;
+    }
+  }
+
   function renderNavigationPanel(host) {
     const { panel, trigger } = getBadgeParts(host);
     if (!panel || !trigger) return;
@@ -952,22 +1036,7 @@
     const searchSelection = focusedControl === 'search'
       ? { start: activeElement.selectionStart, end: activeElement.selectionEnd }
       : null;
-    const filteredIssues = filterOpenItems(navigation.issues);
-    const filteredMergeRequests = filterOpenItems(navigation.mergeRequests);
-    const visibleKinds = getVisibleKinds();
-    const totalCount = (
-      (visibleKinds.includes('issue') ? filteredIssues?.length || 0 : 0)
-      + (visibleKinds.includes('merge-request') ? filteredMergeRequests?.length || 0 : 0)
-    );
-    const rawVisibleCount = (
-      (visibleKinds.includes('issue') ? navigation.issues?.length || 0 : 0)
-      + (visibleKinds.includes('merge-request') ? navigation.mergeRequests?.length || 0 : 0)
-    );
-    const visibleGroupsReady = visibleKinds.every((kind) => (
-      kind === 'issue'
-        ? filteredIssues !== null && !navigation.errors.issues
-        : filteredMergeRequests !== null && !navigation.errors.mergeRequests
-    ));
+    const state = getNavigationPanelState();
 
     panel.hidden = !navigation.open;
     trigger.setAttribute('aria-expanded', navigation.open ? 'true' : 'false');
@@ -980,7 +1049,7 @@
     headingText.textContent = 'Open items';
     const total = root.document.createElement('span');
     total.setAttribute('data-open-items-total', '');
-    total.textContent = String(totalCount);
+    total.textContent = String(state.totalCount);
     heading.append(headingText, total);
 
     if (activeConfig.showLastRefresh && Number.isFinite(navigation.lastLoadedAt)) {
@@ -1032,38 +1101,10 @@
     }
     searchControls.append(search, filters);
 
-    const children = [header, searchControls];
-    if (navigation.message) {
-      const message = root.document.createElement('div');
-      message.setAttribute('data-open-items-message', '');
-      message.setAttribute('role', 'status');
-      message.textContent = navigation.message;
-      children.push(message);
-    }
-    if (visibleGroupsReady && totalCount === 0) {
-      const empty = root.document.createElement('div');
-      empty.setAttribute('data-open-items-empty', '');
-      empty.setAttribute('role', 'status');
-      empty.textContent = navigation.query.trim() === '' && rawVisibleCount === 0
-        ? '暂无 Open items'
-        : '没有匹配的 Open items';
-      children.push(empty);
-    } else {
-      if (visibleKinds.includes('issue')) {
-        children.push(createOpenItemsGroup(
-          'issues',
-          filteredIssues,
-          navigation.errors.issues,
-        ));
-      }
-      if (visibleKinds.includes('merge-request')) {
-        children.push(createOpenItemsGroup(
-          'merge-requests',
-          filteredMergeRequests,
-          navigation.errors.mergeRequests,
-        ));
-      }
-    }
+    const results = root.document.createElement('div');
+    results.setAttribute('data-open-items-results', '');
+    results.append(...createNavigationResultChildren(state));
+    const children = [header, searchControls, results];
     renderingNavigationPanel = true;
     try {
       panel.replaceChildren(...children);
@@ -1289,7 +1330,7 @@
     navigation.query = event.currentTarget.value;
     navigation.searchOwned = true;
     const host = root.document.getElementById(HOST_ID);
-    if (host) renderNavigationPanel(host);
+    if (host) renderNavigationResults(host);
     persistSearchState();
   }
 

@@ -1166,6 +1166,34 @@ test('searches exact references and case-insensitive title substrings locally', 
   assert.equal(harness.fetchCalls.length, 2);
 });
 
+test('updates search results during IME composition without replacing the input node', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/12', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 12, title: '中文输入修复' },
+        { iid: 13, title: 'Unrelated issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  const search = rendered.search;
+  search.focus();
+  search.dispatchEvent({ type: 'compositionstart' });
+  search.value = '中文';
+  search.setSelectionRange(2, 2);
+  search.dispatchEvent({ type: 'input', isComposing: true });
+
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.search, search);
+  assert.equal(rendered.host.shadowRoot.activeElement, search);
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['12'],
+  );
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '1');
+});
+
 test('combines local text search with type filters without refetching', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [
@@ -1253,6 +1281,22 @@ test('distinguishes a project with no Open items from filtered no matches', asyn
   const empty = rendered.panel.querySelector('[data-open-items-empty]');
   assert.equal(empty.getAttribute('role'), 'status');
   assert.equal(empty.textContent, '暂无 Open items');
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
+});
+
+test('treats an empty type filter as no matches when another type has open items', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([]),
+      jsonResponse([{ iid: 8, title: 'Open MR' }]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  const rendered = filterOpenItems(harness, 'issue');
+  const empty = rendered.panel.querySelector('[data-open-items-empty]');
+  assert.equal(empty.getAttribute('role'), 'status');
+  assert.equal(empty.textContent, '没有匹配的 Open items');
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
 });
 
