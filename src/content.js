@@ -7,6 +7,7 @@
   const HOVER_OPEN_DELAY_MS = 150;
   const HOVER_CLOSE_DELAY_MS = 250;
   const POSITION_SAVE_DELAY_MS = 200;
+  const SEARCH_STATE_SAVE_DELAY_MS = 200;
   const VIEWPORT_MARGIN = 8;
   const PANEL_GAP = 6;
   const DRAG_THRESHOLD = 4;
@@ -73,6 +74,8 @@
   let positionFrameId = null;
   let positionSaveTimerId = null;
   let pendingPositionSave = null;
+  let searchStateSaveTimerId = null;
+  let pendingSearchStateSave = null;
   let persistedPosition = { ...DEFAULT_POSITION };
   let drag = null;
   let activeConfig = {
@@ -164,14 +167,48 @@
       : items;
   }
 
-  function persistSearchState() {
-    if (!activeConfig.rememberSearch) return;
-    Promise.resolve(configStore.setSearchState({
-      query: navigation.query,
-      listFilter: navigation.listFilter,
-    }, getCurrentOrigin())).catch(() => {
+  function cancelScheduledSearchStateSave() {
+    if (searchStateSaveTimerId !== null) {
+      root.clearTimeout(searchStateSaveTimerId);
+      searchStateSaveTimerId = null;
+    }
+    pendingSearchStateSave = null;
+  }
+
+  function flushScheduledSearchStateSave() {
+    if (searchStateSaveTimerId !== null) {
+      root.clearTimeout(searchStateSaveTimerId);
+      searchStateSaveTimerId = null;
+    }
+    const pending = pendingSearchStateSave;
+    pendingSearchStateSave = null;
+    if (!pending || !activeConfig.rememberSearch) return;
+    Promise.resolve(configStore.setSearchState(pending.state, pending.origin)).catch(() => {
       // Search remains usable in this content-script session when persistence fails.
     });
+  }
+
+  function persistSearchState({ immediate = false } = {}) {
+    if (!activeConfig.rememberSearch) {
+      cancelScheduledSearchStateSave();
+      return;
+    }
+    pendingSearchStateSave = {
+      state: {
+        query: navigation.query,
+        listFilter: navigation.listFilter,
+      },
+      origin: getCurrentOrigin(),
+    };
+    if (immediate) {
+      flushScheduledSearchStateSave();
+      return;
+    }
+    if (searchStateSaveTimerId !== null) root.clearTimeout(searchStateSaveTimerId);
+    searchStateSaveTimerId = root.setTimeout(() => {
+      searchStateSaveTimerId = null;
+      flushScheduledSearchStateSave();
+    }, SEARCH_STATE_SAVE_DELAY_MS);
   }
 
   function buildItemsApiUrl(reference, resource, page, perPage) {
@@ -1011,13 +1048,17 @@
   function renderNavigationResults(host) {
     const { panel } = getBadgeParts(host);
     const total = panel?.querySelector('[data-open-items-total]');
+    const summary = panel?.querySelector('[data-open-items-search-summary]');
     const results = panel?.querySelector('[data-open-items-results]');
-    if (!total || !results) {
+    if (!total || !summary || !results) {
       renderNavigationPanel(host);
       return;
     }
     const state = getNavigationPanelState();
     total.textContent = String(state.totalCount);
+    summary.textContent = state.totalCount === 0
+      ? '没有匹配的 Open items'
+      : `找到 ${state.totalCount} 个 Open items`;
     renderingNavigationPanel = true;
     try {
       results.replaceChildren(...createNavigationResultChildren(state));
@@ -1064,6 +1105,9 @@
       search.setAttribute('aria-label', '搜索 Open items');
       search.setAttribute('placeholder', '搜索编号或标题');
       search.addEventListener('input', handleSearchInput);
+      search.addEventListener('keydown', handleSearchKeyboardEvent);
+      search.addEventListener('keypress', handleSearchKeyboardEvent);
+      search.addEventListener('keyup', handleSearchKeyboardEvent);
 
       const filters = root.document.createElement('div');
       filters.setAttribute('data-open-items-filters', '');
@@ -1083,19 +1127,28 @@
       }
       searchControls.append(search, filters);
 
+      const searchSummary = root.document.createElement('span');
+      searchSummary.setAttribute('data-open-items-search-summary', '');
+      searchSummary.setAttribute('aria-live', 'polite');
+      searchSummary.setAttribute('aria-atomic', 'true');
+
       const results = root.document.createElement('div');
       results.setAttribute('data-open-items-results', '');
-      panel.append(header, searchControls, results);
+      panel.append(header, searchControls, searchSummary, results);
     }
 
     const heading = panel.querySelector('[data-open-items-heading]');
     const total = panel.querySelector('[data-open-items-total]');
     const refresh = panel.querySelector('[data-refresh-open-items]');
     const search = panel.querySelector('[data-open-items-search]');
+    const searchSummary = panel.querySelector('[data-open-items-search-summary]');
     const results = panel.querySelector('[data-open-items-results]');
-    if (!heading || !total || !refresh || !search || !results) return;
+    if (!heading || !total || !refresh || !search || !searchSummary || !results) return;
 
     total.textContent = String(state.totalCount);
+    searchSummary.textContent = state.totalCount === 0
+      ? '没有匹配的 Open items'
+      : `找到 ${state.totalCount} 个 Open items`;
     const existingLastRefresh = heading.querySelector('[data-last-refresh]');
     if (activeConfig.showLastRefresh && Number.isFinite(navigation.lastLoadedAt)) {
       const lastRefresh = existingLastRefresh || root.document.createElement('time');
@@ -1255,6 +1308,8 @@
     if (!navigation.open) return;
     navigationCloseTimerId = root.setTimeout(() => {
       navigationCloseTimerId = null;
+      const host = root.document.getElementById(HOST_ID);
+      if (host?.shadowRoot?.activeElement) return;
       closeNavigation();
     }, HOVER_CLOSE_DELAY_MS);
   }
@@ -1317,6 +1372,11 @@
     }
   }
 
+  function handleSearchKeyboardEvent(event) {
+    if (event.type === 'keydown') handleNavigationKeydown(event);
+    event.stopPropagation();
+  }
+
   function handleRefresh(event) {
     event.preventDefault();
     event.stopPropagation();
@@ -1339,7 +1399,7 @@
     navigation.searchOwned = true;
     const host = root.document.getElementById(HOST_ID);
     if (host) renderNavigationPanel(host);
-    persistSearchState();
+    persistSearchState({ immediate: true });
   }
 
   function createBadgeHost() {
@@ -1854,7 +1914,8 @@
         transform: translateY(0);
       }
 
-      [data-copy-announcement] {
+      [data-copy-announcement],
+      [data-open-items-search-summary] {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -2149,6 +2210,7 @@
   function destroy() {
     if (destroyed) return;
     flushScheduledPositionSave();
+    flushScheduledSearchStateSave();
     destroyed = true;
     invalidateCopyOperations();
     resetNavigation();
@@ -2193,6 +2255,7 @@
         let searchDisplayChanged = false;
         const memoryDisabled = previous.rememberSearch && !effective.rememberSearch;
         if (memoryDisabled) {
+          cancelScheduledSearchStateSave();
           searchDisplayChanged = navigation.query !== ''
             || navigation.listFilter !== (effective.listFilter || 'all');
           navigation.query = '';

@@ -524,6 +524,7 @@ function getBadge(document) {
     panel: shadow?.querySelector('[data-open-items-panel]') || null,
     refresh: shadow?.querySelector('[data-refresh-open-items]') || null,
     search: shadow?.querySelector('[data-open-items-search]') || null,
+    searchSummary: shadow?.querySelector('[data-open-items-search-summary]') || null,
     filterAll: shadow?.querySelector('[data-open-items-filter="all"]') || null,
     filterIssue: shadow?.querySelector('[data-open-items-filter="issue"]') || null,
     filterMergeRequest: shadow?.querySelector('[data-open-items-filter="merge-request"]') || null,
@@ -1106,6 +1107,8 @@ test('renders an accessible local search field and type filters', async () => {
   assert.equal(rendered.search.getAttribute('type'), 'search');
   assert.equal(rendered.search.getAttribute('aria-label'), '搜索 Open items');
   assert.equal(rendered.search.getAttribute('placeholder'), '搜索编号或标题');
+  assert.equal(rendered.searchSummary.getAttribute('aria-live'), 'polite');
+  assert.equal(rendered.searchSummary.getAttribute('aria-atomic'), 'true');
   assert.equal(rendered.filterAll.tagName, 'BUTTON');
   assert.equal(rendered.filterIssue.tagName, 'BUTTON');
   assert.equal(rendered.filterMergeRequest.tagName, 'BUTTON');
@@ -1115,6 +1118,43 @@ test('renders an accessible local search field and type filters', async () => {
   assert.equal(rendered.filterAll.getAttribute('aria-pressed'), 'true');
   assert.equal(rendered.filterIssue.getAttribute('aria-pressed'), 'false');
   assert.equal(rendered.filterMergeRequest.getAttribute('aria-pressed'), 'false');
+});
+
+test('keeps one live region while announcing filtered result changes', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/12', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 12, title: 'Release blocker' },
+        { iid: 13, title: 'Documentation' },
+      ]),
+      jsonResponse([{ iid: 8, title: 'Release MR' }]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  const summary = rendered.searchSummary;
+
+  assert.equal(summary.textContent, '找到 3 个 Open items');
+
+  rendered = searchOpenItems(harness, 'release');
+  assert.equal(rendered.searchSummary, summary);
+  assert.equal(summary.textContent, '找到 2 个 Open items');
+
+  rendered = searchOpenItems(harness, 'missing');
+  assert.equal(rendered.searchSummary, summary);
+  assert.equal(summary.textContent, '没有匹配的 Open items');
+});
+
+test('stops search keyboard events before they reach GitLab shortcuts', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/12', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const rendered = await openAndLoad(harness);
+
+  for (const type of ['keydown', 'keypress', 'keyup']) {
+    const event = { type, key: 's' };
+    rendered.search.dispatchEvent(event);
+    assert.equal(event.propagationStopped, true, `${type} should stop propagation`);
+  }
 });
 
 test('searches exact references and case-insensitive title substrings locally', async () => {
@@ -1381,6 +1421,32 @@ test('remembers search state across content contexts when enabled by default', a
   const restored = await openAndLoad(second);
   assert.equal(restored.search.value, '#123');
   assert.equal(restored.filterIssue.getAttribute('aria-pressed'), 'true');
+});
+
+test('debounces repeated search persistence and saves only the latest query', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  await openAndLoad(harness);
+  const writesBeforeSearch = harness.storageCalls.set.length;
+
+  searchOpenItems(harness, 'r');
+  searchOpenItems(harness, 're');
+  searchOpenItems(harness, 'release');
+  await harness.flushMicrotasks();
+  assert.equal(harness.storageCalls.set.length, writesBeforeSearch);
+
+  harness.advanceTimersBy(199);
+  await harness.flushMicrotasks();
+  assert.equal(harness.storageCalls.set.length, writesBeforeSearch);
+
+  harness.advanceTimersBy(1);
+  await harness.flushMicrotasks();
+  assert.equal(harness.storageCalls.set.length, writesBeforeSearch + 1);
+  assert.equal(
+    harness.storageCalls.set.at(-1)[CONFIG_STORAGE_KEY].searchState.query,
+    'release',
+  );
 });
 
 test('keeps search state in the current session without storage writes when memory is disabled', async () => {
@@ -1852,6 +1918,20 @@ test('opens after hover delay and closes only after leaving the navigation regio
   rendered.button.dispatchEvent({ type: 'mouseleave' });
   harness.advanceTimersBy(250);
   assert.equal(rendered.panel.hidden, true);
+});
+
+test('keeps the panel open after mouseleave while search focus remains inside', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const rendered = await openAndLoad(harness);
+  rendered.search.focus();
+
+  rendered.panel.dispatchEvent({ type: 'mouseleave' });
+  harness.advanceTimersBy(250);
+
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.search);
 });
 
 test('supports keyboard opening and Escape closes with focus restored', async () => {
