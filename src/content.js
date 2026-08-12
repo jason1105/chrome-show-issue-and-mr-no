@@ -1029,97 +1029,94 @@
   function renderNavigationPanel(host) {
     const { panel, trigger } = getBadgeParts(host);
     if (!panel || !trigger) return;
-    const activeElement = host.shadowRoot?.activeElement;
-    const focusedControl = activeElement?.getAttribute?.('data-open-items-filter')
-      || (activeElement?.matches?.('[data-refresh-open-items]') ? 'refresh' : null)
-      || (activeElement?.matches?.('[data-open-items-search]') ? 'search' : null);
-    const searchSelection = focusedControl === 'search'
-      ? { start: activeElement.selectionStart, end: activeElement.selectionEnd }
-      : null;
     const state = getNavigationPanelState();
 
     panel.hidden = !navigation.open;
     trigger.setAttribute('aria-expanded', navigation.open ? 'true' : 'false');
 
-    const header = root.document.createElement('div');
-    header.setAttribute('data-open-items-header', '');
-    const heading = root.document.createElement('div');
-    heading.setAttribute('data-open-items-heading', '');
-    const headingText = root.document.createElement('span');
-    headingText.textContent = 'Open items';
-    const total = root.document.createElement('span');
-    total.setAttribute('data-open-items-total', '');
-    total.textContent = String(state.totalCount);
-    heading.append(headingText, total);
+    if (!panel.querySelector('[data-open-items-search]')) {
+      const header = root.document.createElement('div');
+      header.setAttribute('data-open-items-header', '');
+      const heading = root.document.createElement('div');
+      heading.setAttribute('data-open-items-heading', '');
+      const headingText = root.document.createElement('span');
+      headingText.textContent = 'Open items';
+      const total = root.document.createElement('span');
+      total.setAttribute('data-open-items-total', '');
+      heading.append(headingText, total);
 
+      const refresh = root.document.createElement('button');
+      refresh.setAttribute('type', 'button');
+      refresh.setAttribute('data-refresh-open-items', '');
+      refresh.setAttribute('aria-label', '刷新 Open items 列表');
+      refresh.append(createRefreshIcon());
+      const refreshText = root.document.createElement('span');
+      refreshText.textContent = '刷新列表';
+      refresh.append(refreshText);
+      refresh.addEventListener('click', handleRefresh);
+      header.append(heading, refresh);
+
+      const searchControls = root.document.createElement('div');
+      searchControls.setAttribute('data-open-items-controls', '');
+      const search = root.document.createElement('input');
+      search.setAttribute('type', 'search');
+      search.setAttribute('data-open-items-search', '');
+      search.setAttribute('aria-label', '搜索 Open items');
+      search.setAttribute('placeholder', '搜索编号或标题');
+      search.addEventListener('input', handleSearchInput);
+
+      const filters = root.document.createElement('div');
+      filters.setAttribute('data-open-items-filters', '');
+      filters.setAttribute('role', 'group');
+      filters.setAttribute('aria-label', '筛选 Open items 类型');
+      for (const [kind, label] of [
+        ['all', '全部'],
+        ['issue', 'Issue'],
+        ['merge-request', 'MR'],
+      ]) {
+        const filter = root.document.createElement('button');
+        filter.setAttribute('type', 'button');
+        filter.setAttribute('data-open-items-filter', kind);
+        filter.textContent = label;
+        filter.addEventListener('click', handleFilterClick);
+        filters.append(filter);
+      }
+      searchControls.append(search, filters);
+
+      const results = root.document.createElement('div');
+      results.setAttribute('data-open-items-results', '');
+      panel.append(header, searchControls, results);
+    }
+
+    const heading = panel.querySelector('[data-open-items-heading]');
+    const total = panel.querySelector('[data-open-items-total]');
+    const refresh = panel.querySelector('[data-refresh-open-items]');
+    const search = panel.querySelector('[data-open-items-search]');
+    const results = panel.querySelector('[data-open-items-results]');
+    if (!heading || !total || !refresh || !search || !results) return;
+
+    total.textContent = String(state.totalCount);
+    const existingLastRefresh = heading.querySelector('[data-last-refresh]');
     if (activeConfig.showLastRefresh && Number.isFinite(navigation.lastLoadedAt)) {
-      const lastRefresh = root.document.createElement('time');
+      const lastRefresh = existingLastRefresh || root.document.createElement('time');
       lastRefresh.setAttribute('data-last-refresh', '');
       lastRefresh.setAttribute('datetime', new root.Date(navigation.lastLoadedAt).toISOString());
       lastRefresh.textContent = `更新于 ${formatLastRefresh(navigation.lastLoadedAt)}`;
-      heading.append(lastRefresh);
+      if (!existingLastRefresh) heading.append(lastRefresh);
+    } else {
+      existingLastRefresh?.remove();
     }
-
-    const refresh = root.document.createElement('button');
-    refresh.setAttribute('type', 'button');
-    refresh.setAttribute('data-refresh-open-items', '');
     refresh.setAttribute('aria-busy', navigation.loading ? 'true' : 'false');
-    refresh.setAttribute('aria-label', '刷新 Open items 列表');
-    refresh.append(createRefreshIcon());
-    const refreshText = root.document.createElement('span');
-    refreshText.textContent = '刷新列表';
-    refresh.append(refreshText);
-    refresh.addEventListener('click', handleRefresh);
-    header.append(heading, refresh);
-
-    const searchControls = root.document.createElement('div');
-    searchControls.setAttribute('data-open-items-controls', '');
-    const search = root.document.createElement('input');
-    search.setAttribute('type', 'search');
-    search.setAttribute('data-open-items-search', '');
-    search.setAttribute('aria-label', '搜索 Open items');
-    search.setAttribute('placeholder', '搜索编号或标题');
-    search.value = navigation.query;
-    search.addEventListener('input', handleSearchInput);
-
-    const filters = root.document.createElement('div');
-    filters.setAttribute('data-open-items-filters', '');
-    filters.setAttribute('role', 'group');
-    filters.setAttribute('aria-label', '筛选 Open items 类型');
-    for (const [kind, label] of [
-      ['all', '全部'],
-      ['issue', 'Issue'],
-      ['merge-request', 'MR'],
-    ]) {
-      const filter = root.document.createElement('button');
-      filter.setAttribute('type', 'button');
-      filter.setAttribute('data-open-items-filter', kind);
+    if (search.value !== navigation.query) search.value = navigation.query;
+    for (const filter of panel.querySelectorAll('[data-open-items-filter]')) {
+      const kind = filter.getAttribute('data-open-items-filter');
       filter.setAttribute('aria-pressed', navigation.listFilter === kind ? 'true' : 'false');
-      filter.textContent = label;
-      filter.addEventListener('click', handleFilterClick);
-      filters.append(filter);
     }
-    searchControls.append(search, filters);
-
-    const results = root.document.createElement('div');
-    results.setAttribute('data-open-items-results', '');
-    results.append(...createNavigationResultChildren(state));
-    const children = [header, searchControls, results];
     renderingNavigationPanel = true;
     try {
-      panel.replaceChildren(...children);
+      results.replaceChildren(...createNavigationResultChildren(state));
     } finally {
       renderingNavigationPanel = false;
-    }
-    if (!navigation.open || !focusedControl) return;
-    const nextFocusedControl = focusedControl === 'refresh'
-      ? refresh
-      : focusedControl === 'search'
-        ? search
-        : filters.querySelector(`[data-open-items-filter="${focusedControl}"]`);
-    nextFocusedControl?.focus();
-    if (searchSelection) {
-      search.setSelectionRange(searchSelection.start, searchSelection.end);
     }
   }
 
@@ -1309,6 +1306,7 @@
 
   function handleNavigationKeydown(event) {
     if (event.key === 'Escape') {
+      if (event.isComposing) return;
       event.preventDefault();
       closeNavigation({ restoreFocus: true });
       return;

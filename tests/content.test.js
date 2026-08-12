@@ -1194,6 +1194,34 @@ test('updates search results during IME composition without replacing the input 
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '1');
 });
 
+test('preserves an active IME search input when the initial load completes', async () => {
+  const issues = deferred();
+  const mergeRequests = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/12', {
+    fetchResults: [issues, mergeRequests],
+  });
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+
+  let rendered = getBadge(harness.document);
+  const search = rendered.search;
+  search.focus();
+  search.dispatchEvent({ type: 'compositionstart' });
+  search.value = '中文';
+  search.setSelectionRange(2, 2);
+  search.dispatchEvent({ type: 'input', isComposing: true });
+
+  issues.resolve(jsonResponse([{ iid: 12, title: '中文输入修复' }]));
+  mergeRequests.resolve(jsonResponse([]));
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+
+  assert.equal(rendered.search, search);
+  assert.equal(rendered.host.shadowRoot.activeElement, search);
+  assert.equal(rendered.search.value, '中文');
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '1');
+});
+
 test('combines local text search with type filters without refetching', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [
@@ -1675,6 +1703,47 @@ test('applies display configuration changes without refetching loaded Open items
   assert.equal(harness.fetchCalls.length, 2);
 });
 
+test('preserves an active IME search input while applying display configuration changes', async () => {
+  const initialConfig = {
+    version: 1,
+    user: { listFilter: 'all', touchDrag: true },
+  };
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: { [CONFIG_STORAGE_KEY]: initialConfig },
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Current issue' }]),
+      jsonResponse([{ iid: 16, title: 'Open MR' }]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  const search = rendered.search;
+  search.focus();
+  search.dispatchEvent({ type: 'compositionstart' });
+  search.value = 'current';
+  search.setSelectionRange(7, 7);
+  search.dispatchEvent({ type: 'input', isComposing: true });
+
+  const nextConfig = {
+    ...initialConfig,
+    user: { ...initialConfig.user, listFilter: 'issue', touchDrag: false },
+    userOverrides: { listFilter: true, touchDrag: true },
+  };
+  harness.storageData[CONFIG_STORAGE_KEY] = nextConfig;
+  await harness.dispatchStorageChanged({
+    [CONFIG_STORAGE_KEY]: { oldValue: initialConfig, newValue: nextConfig },
+  });
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+
+  assert.equal(rendered.search, search);
+  assert.equal(rendered.host.shadowRoot.activeElement, search);
+  assert.equal(rendered.search.value, 'current');
+  assert.equal(rendered.host.getAttribute('data-touch-drag'), 'false');
+  assert.equal(rendered.filterAll.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 2);
+  assert.equal(harness.fetchCalls.length, 2);
+});
+
 test('reuses a complete snapshot for 60 seconds and refreshes expired data', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
     fetchResults: [
@@ -1805,6 +1874,29 @@ test('supports keyboard opening and Escape closes with focus restored', async ()
   assert.equal(rendered.panel.hidden, false);
   rendered.trigger.dispatchEvent({ type: 'keydown', key: 'Enter' });
   assert.equal(rendered.panel.hidden, false);
+});
+
+test('does not close the navigation panel for Escape during IME composition', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  let rendered = await openAndLoad(harness);
+  rendered.search.focus();
+  rendered.search.dispatchEvent({ type: 'compositionstart' });
+  const event = {
+    type: 'keydown',
+    key: 'Escape',
+    isComposing: true,
+    target: rendered.search,
+  };
+
+  rendered.panel.dispatchEvent(event);
+  rendered = getBadge(harness.document);
+
+  assert.equal(event.defaultPrevented, false);
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'true');
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.search);
 });
 
 test('touch toggles the panel and an outside pointer closes it', () => {
