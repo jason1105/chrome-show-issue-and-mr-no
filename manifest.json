@@ -10,37 +10,19 @@
     "128": "icons/icon-128.png"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "scripting"
   ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {},
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "options_ui": {
     "page": "src/options.html",
     "open_in_tab": true
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ],
-      "js": [
-        "src/navigation-hook.js"
-      ],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ],
-      "js": [
-        "src/parser.js",
-        "src/config.js",
-        "src/ui.js",
-        "src/content.js"
-      ],
-      "run_at": "document_start",
-      "world": "ISOLATED"
-    }
-  ]
+  }
 }

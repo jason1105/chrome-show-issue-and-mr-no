@@ -13,30 +13,31 @@ test('declares a loadable Manifest V3 extension', () => {
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 });
 
-test('injects parser, configuration, and badge scripts on HTTP and HTTPS pages', () => {
-  assert.equal(manifest.content_scripts.length, 2);
+test('requests optional host permissions and dynamically registers scripts', () => {
+  assert.equal(manifest.content_scripts, undefined);
+  assert.deepEqual(manifest.permissions || [], ['storage', 'scripting']);
+  assert.deepEqual(manifest.optional_host_permissions || [], ['http://*/*', 'https://*/*']);
+  assert.equal(manifest.background?.service_worker, 'src/background.js');
 
-  const [mainWorldScript, contentScript] = manifest.content_scripts;
-  assert.deepEqual(mainWorldScript.matches, ['http://*/*', 'https://*/*']);
-  assert.deepEqual(mainWorldScript.js, ['src/navigation-hook.js']);
-  assert.equal(mainWorldScript.run_at, 'document_start');
-  assert.equal(mainWorldScript.world, 'MAIN');
-
-  assert.deepEqual(contentScript.matches, ['http://*/*', 'https://*/*']);
-  assert.deepEqual(contentScript.js, ['src/parser.js', 'src/config.js', 'src/ui.js', 'src/content.js']);
-  assert.equal(contentScript.run_at, 'document_start');
-  assert.equal(contentScript.world, 'ISOLATED');
-
-  for (const scriptPath of [...mainWorldScript.js, ...contentScript.js]) {
-    assert.equal(fs.statSync(path.join(projectRoot, scriptPath)).isFile(), true);
-  }
+  assert.equal(fs.statSync(path.join(projectRoot, 'src/background.js')).isFile(), true);
+  assert.equal(fs.statSync(path.join(projectRoot, 'src/permissions.js')).isFile(), true);
 });
 
-test('only requests storage permission for local preferences and control position', () => {
-  assert.deepEqual(manifest.permissions || [], ['storage']);
-  assert.deepEqual(manifest.optional_permissions || [], []);
-  assert.deepEqual(manifest.host_permissions || [], []);
-  assert.deepEqual(manifest.optional_host_permissions || [], []);
+test('registers content scripts in parser → config → ui → content order at document_start', () => {
+  const permissionsSource = fs.readFileSync(path.join(projectRoot, 'src/permissions.js'), 'utf8');
+  assert.match(permissionsSource, /CONTENT_SCRIPT_FILES[\s\S]*?'src\/parser\.js'[\s\S]*?'src\/config\.js'[\s\S]*?'src\/ui\.js'[\s\S]*?'src\/content\.js'/);
+  const order = ['src/parser.js', 'src/config.js', 'src/ui.js', 'src/content.js']
+    .map((name) => permissionsSource.indexOf(`'${name}'`));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'script files must be listed in order');
+  assert.match(permissionsSource, /document_start/);
+});
+
+test('registers the navigation hook in the MAIN world at document_start', () => {
+  const permissionsSource = fs.readFileSync(path.join(projectRoot, 'src/permissions.js'), 'utf8');
+  assert.match(permissionsSource, /NAVIGATION_HOOK_SCRIPT_ID/);
+  assert.match(permissionsSource, /'src\/navigation-hook\.js'/);
+  assert.match(permissionsSource, /world:\s*'MAIN'/);
+  assert.equal(fs.statSync(path.join(projectRoot, 'src/navigation-hook.js')).isFile(), true);
 });
 
 test('provides a keyboard-accessible settings page', () => {
@@ -46,7 +47,11 @@ test('provides a keyboard-accessible settings page', () => {
   const optionsHtml = fs.readFileSync(path.join(projectRoot, 'src/options.html'), 'utf8');
   assert.match(optionsHtml, /<form id="settings-form"/);
   assert.match(optionsHtml, /<script src="config\.js"><\/script>/);
+  assert.match(optionsHtml, /<script src="permissions\.js"><\/script>/);
   assert.match(optionsHtml, /<script src="options\.js"><\/script>/);
+  assert.match(optionsHtml, /id="origin-input"/);
+  assert.match(optionsHtml, /id="grant-origin"/);
+  assert.match(optionsHtml, /id="granted-origins"/);
   assert.equal(fs.statSync(path.join(projectRoot, 'src/options.css')).isFile(), true);
 });
 

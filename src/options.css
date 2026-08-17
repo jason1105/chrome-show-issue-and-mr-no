@@ -45,6 +45,36 @@ select, input[type="number"] {
 }
 .check-row { display: flex; grid-template-columns: none; align-items: center; gap: 9px; }
 .check-row input { width: 16px; height: 16px; margin: 0; }
+.granted-origins {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.granted-origins li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+}
+
+.granted-origins li.origin-pending,
+.granted-origins li.origin-empty {
+  justify-content: flex-start;
+  color: var(--muted, #57606a);
+  font-style: italic;
+}
+
+.origin-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .settings-actions { display: flex; justify-content: flex-end; gap: 8px; }
 button { min-height: 34px; padding: 6px 14px; border: 1px solid transparent; border-radius: 6px; font: 600 14px/20px inherit; cursor: pointer; }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
