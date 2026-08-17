@@ -2169,6 +2169,70 @@ test('paginated mode loads the first batch and appends more on demand', async ()
   assert.equal(updatedLoadMore.disabled, true);
 });
 
+test('paginated mode load-more continues from the stored next page until done', async () => {
+  const issuePage1 = Array.from({ length: 40 }, (_, index) => ({
+    iid: index + 1,
+    title: `Issue ${index + 1}`,
+  }));
+  const issuePage2 = Array.from({ length: 40 }, (_, index) => ({
+    iid: index + 41,
+    title: `Issue ${index + 41}`,
+  }));
+  const issuePage3 = [{ iid: 81, title: 'Issue 81' }];
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse(issuePage1, { nextPage: '2' }),
+      jsonResponse([]),
+      jsonResponse(issuePage2, { nextPage: '3' }),
+      jsonResponse(issuePage3),
+    ],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 40, maxItemsPerType: 200 },
+      },
+    },
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 40);
+  // One load-more click continues from the stored next page (page 2) and keeps
+  // fetching until no next page remains.
+  rendered.panel.querySelector('[data-open-items-load-more="issue"]').dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  await harness.flushMicrotasks();
+  const updated = getBadge(harness.document);
+  assert.equal(updated.panel.querySelectorAll('[data-open-item]').length, 81);
+  const updatedLoadMore = updated.panel.querySelector('[data-open-items-load-more="issue"]');
+  assert.equal(updatedLoadMore.disabled, true);
+  assert.match(updatedLoadMore.textContent, /已加载全部 81 条/);
+});
+
+test('paginated mode with exact batch size and no next page shows all-loaded', async () => {
+  const issuePage1 = Array.from({ length: 50 }, (_, index) => ({
+    iid: index + 1,
+    title: `Issue ${index + 1}`,
+  }));
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse(issuePage1, { nextPage: '' }),
+      jsonResponse([]),
+    ],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 50 },
+      },
+    },
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 50);
+  const loadMore = rendered.panel.querySelector('[data-open-items-load-more="issue"]');
+  assert.equal(loadMore.disabled, true);
+  assert.match(loadMore.textContent, /已加载全部 50 条/);
+});
+
 test('shows relative last-refresh times', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
     fetchResults: [jsonResponse([{ iid: 1, title: 'One' }]), jsonResponse([])],

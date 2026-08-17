@@ -299,9 +299,9 @@
       }
 
       if (items.length >= batchLimit) {
-        truncated = batchLimit < limit && items.length >= batchLimit;
         const breakNext = response.headers?.get('X-Next-Page') || '';
         nextStartPage = /^[1-9][0-9]*$/.test(breakNext) ? Number(breakNext) : 0;
+        truncated = batchLimit < limit && nextStartPage > 0;
         break;
       }
 
@@ -1033,7 +1033,7 @@
       loadMore.setAttribute('aria-busy', 'true');
       loadMore.disabled = true;
       loadMore.textContent = '正在加载更多…';
-    } else if (navigation.truncated?.[kindKey]) {
+    } else if (navigation.truncated?.[kindKey] && items.length < limit) {
       loadMore.textContent = `加载更多（已加载 ${items.length} 条）`;
       loadMore.addEventListener('click', handleLoadMore);
     } else {
@@ -1269,14 +1269,11 @@
       && host === root.document.getElementById(HOST_ID);
   }
 
-  function buildErrorMessage(results, kinds) {
-    const failed = kinds.filter((kind) => {
-      const result = results[kinds.indexOf(kind)];
-      return result?.status === 'rejected';
-    });
+  function buildErrorMessage(issueResult, mergeRequestResult) {
+    const failed = [issueResult, mergeRequestResult].filter((result) => result?.status === 'rejected');
     if (failed.length === 0) return '';
-    if (failed.length === kinds.length) return '加载失败，请重试';
-    return failed.includes('issue') ? 'Issue 更新失败，MR 已更新' : 'MR 更新失败，Issue 已更新';
+    if (failed.length === 2) return '加载失败，请重试';
+    return issueResult?.status === 'rejected' ? 'Issue 更新失败，MR 已更新' : 'MR 更新失败，Issue 已更新';
   }
 
   async function loadOpenItems({ force = false } = {}) {
@@ -1294,6 +1291,9 @@
     if (!force && isCurrentCache()) {
       navigation.issues = navigation.cache.issues;
       navigation.mergeRequests = navigation.cache.mergeRequests;
+      navigation.truncated = navigation.cache.truncated || { issues: false, mergeRequests: false };
+      navigation.nextStartPage = navigation.cache.nextStartPage
+        || { issues: 1, mergeRequests: 1 };
       navigation.lastLoadedAt = navigation.cache.loadedAt;
       if (root.Date.now() - navigation.cache.loadedAt < activeConfig.cacheTtlSeconds * 1000) {
         navigation.errors = { issues: false, mergeRequests: false };
@@ -1352,6 +1352,8 @@
           loadedAt: root.Date.now(),
           issues: navigation.issues,
           mergeRequests: navigation.mergeRequests,
+          truncated: navigation.truncated,
+          nextStartPage: navigation.nextStartPage,
         };
         navigation.lastLoadedAt = navigation.cache.loadedAt;
       } else if (hasCompleteSnapshot) {
@@ -1370,7 +1372,7 @@
           mergeRequests: Boolean(mergeRequestResult?.status === 'rejected'),
         };
         if (navigation.issues !== null || navigation.mergeRequests !== null) {
-          navigation.message = buildErrorMessage(results, kinds);
+          navigation.message = buildErrorMessage(issueResult, mergeRequestResult);
         }
       }
       navigation.loading = false;
@@ -1398,16 +1400,23 @@
     navigation.loadingMore = { ...navigation.loadingMore, [kindKey]: true };
     renderNavigationPanel(host);
     try {
-      const { items, truncated } = await fetchAllItems(navigation.reference, kind, { startPage });
+      const { items, truncated, nextStartPage } = await fetchAllItems(
+        navigation.reference,
+        kind,
+        { startPage },
+      );
       if (!isCurrentNavigationRequest(generation, projectKey, host)) return;
       const merged = mergeLoadedItems(current, items, limit);
       navigation[kindKey] = merged.items;
       navigation.truncated = { ...navigation.truncated, [kindKey]: Boolean(truncated) };
+      navigation.nextStartPage = { ...navigation.nextStartPage, [kindKey]: nextStartPage || 0 };
       if (navigation.cache && navigation.cache.key === navigation.projectKey) {
         navigation.cache = {
           ...navigation.cache,
           issues: navigation.issues,
           mergeRequests: navigation.mergeRequests,
+          truncated: navigation.truncated,
+          nextStartPage: navigation.nextStartPage,
         };
       }
     } catch {
