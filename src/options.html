@@ -41,7 +41,16 @@
             <select id="loading-mode">
               <option value="parallel">并行加载</option>
               <option value="sequential">顺序加载</option>
+              <option value="paginated">渐进加载（首批 + 加载更多）</option>
             </select>
+          </label>
+          <label>
+            <span>渐进加载每批数量</span>
+            <input id="max-items-batch" type="number" min="1" max="100" step="1" inputmode="numeric">
+          </label>
+          <label>
+            <span>单次请求超时（毫秒）</span>
+            <input id="request-timeout" type="number" min="1000" max="60000" step="500" inputmode="numeric">
           </label>
         </fieldset>
         <fieldset>

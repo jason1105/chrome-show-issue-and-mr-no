@@ -24,6 +24,8 @@
     rememberSearch: 'remember-search',
     cacheTtlSeconds: 'cache-ttl',
     maxItemsPerType: 'max-items',
+    maxItemsPerBatch: 'max-items-batch',
+    requestTimeoutMs: 'request-timeout',
     loadingMode: 'loading-mode',
     showLastRefresh: 'show-last-refresh',
     touchDrag: 'touch-drag',
@@ -41,6 +43,8 @@
     for (const [name, field] of [
       ['cacheTtlSeconds', fields.cacheTtlSeconds],
       ['maxItemsPerType', fields.maxItemsPerType],
+      ['maxItemsPerBatch', fields.maxItemsPerBatch],
+      ['requestTimeoutMs', fields.requestTimeoutMs],
       ['keyboardStep', fields.keyboardStep],
     ]) {
       const rawValue = String(field?.value ?? '').trim();
@@ -62,6 +66,8 @@
     fields.rememberSearch.checked = effective.rememberSearch;
     fields.cacheTtlSeconds.value = String(effective.cacheTtlSeconds);
     fields.maxItemsPerType.value = String(effective.maxItemsPerType);
+    fields.maxItemsPerBatch.value = String(effective.maxItemsPerBatch);
+    fields.requestTimeoutMs.value = String(effective.requestTimeoutMs);
     fields.loadingMode.value = effective.loadingMode;
     fields.showLastRefresh.checked = effective.showLastRefresh;
     fields.touchDrag.checked = effective.touchDrag;
