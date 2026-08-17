@@ -112,7 +112,12 @@
           revoke.setAttribute('aria-label', `撤销 ${item} 的授权`);
           revoke.addEventListener('click', () => {
             setOriginStatus('');
-            permissionController.removeOrigin(item).then(() => {
+            permissionController.removeOrigin(item).then((result) => {
+              if (!result.ok) {
+                setOriginStatus(`撤销 ${item} 的授权失败，请重试`, true);
+                refreshOrigins();
+                return;
+              }
               setOriginStatus(`已撤销 ${item} 的授权`);
               refreshOrigins();
             });

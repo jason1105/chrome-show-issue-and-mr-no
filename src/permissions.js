@@ -42,6 +42,28 @@
     return patterns;
   }
 
+  const PENDING_BADGE_TEXT = '!';
+
+  // Reflect pending re-authorization origins on the action badge so users
+  // notice the extension lost host access (e.g. after an upgrade removed
+  // static content_scripts) and are guided to the options page.
+  function updatePendingBadge(chromeLike) {
+    const actionApi = chromeLike?.action;
+    if (!actionApi?.setBadgeText) return Promise.resolve();
+    return createPermissionController(chromeLike).readPendingOrigins().then((pending) => {
+      const hasPending = pending.length > 0;
+      const badgeOps = [
+        hasPending
+          ? actionApi.setBadgeText({ text: PENDING_BADGE_TEXT })
+          : actionApi.setBadgeText({ text: '' }),
+      ];
+      if (actionApi.setBadgeBackgroundColor) {
+        badgeOps.push(actionApi.setBadgeBackgroundColor({ color: '#c62828' }));
+      }
+      return Promise.all(badgeOps).catch(() => {});
+    });
+  }
+
   function createPermissionController(chromeLike, options = {}) {
     const permissionsApi = chromeLike?.permissions;
     const scriptingApi = chromeLike?.scripting;
@@ -124,7 +146,10 @@
               if (granted) {
                 return readPendingOrigins().then((pending) => writePendingOrigins(
                   pending.filter((item) => item !== normalized),
-                )).then(() => ({ ok: true, reason: 'granted', origin: normalized }));
+                )).then(() => {
+                  updatePendingBadge(chromeLike);
+                  return { ok: true, reason: 'granted', origin: normalized };
+                });
               }
               return { ok: false, reason: 'denied', origin: normalized };
             }),
@@ -140,9 +165,20 @@
       if (!normalized) return Promise.resolve({ ok: false, reason: 'invalid-origin', origin: null });
       const removal = { origins: [`${normalized}/*`] };
       const dropPermission = permissionsApi?.remove
-        ? permissionsApi.remove(removal).catch(() => false)
+        ? permissionsApi.remove(removal).then(
+          (removed) => removed !== false,
+          () => false,
+        )
         : Promise.resolve(false);
-      return dropPermission.then(() => syncRegisteredScripts()).then(() => ({ ok: true, reason: 'removed', origin: normalized }));
+      return dropPermission.then((removed) => {
+        if (!removed) {
+          return { ok: false, reason: 'remove-failed', origin: normalized };
+        }
+        return syncRegisteredScripts().then(() => {
+          updatePendingBadge(chromeLike);
+          return { ok: true, reason: 'removed', origin: normalized };
+        });
+      });
     }
 
     function listGrantedOrigins() {
@@ -213,5 +249,6 @@
     normalizeOriginInput,
     createPermissionController,
     migrateLegacyOriginsOnUpdate,
+    updatePendingBadge,
   };
 });

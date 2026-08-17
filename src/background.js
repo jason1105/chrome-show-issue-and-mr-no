@@ -1,9 +1,10 @@
 (function initializeGitLabReferenceBackground(root) {
   'use strict';
 
-  // Classic service worker: pull in the shared permission helpers on the global.
+  // The service worker script lives at src/background.js, so importScripts
+  // resolves relative URLs against src/ — use the sibling file name directly.
   if (typeof importScripts === 'function' && !root.GitLabReferencePermissions) {
-    importScripts('src/permissions.js');
+    importScripts('permissions.js');
   }
 
   const chromeApi = root?.chrome;
@@ -34,6 +35,7 @@
     }
     permissions.migrateLegacyOriginsOnUpdate(chromeApi, readLegacyConfig).then((migrated) => {
       if (!migrated.length) return;
+      permissions.updatePendingBadge(chromeApi);
       permissions.syncRegisteredScripts();
     });
   });

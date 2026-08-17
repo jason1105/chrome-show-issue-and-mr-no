@@ -9,6 +9,7 @@ const {
   normalizeOriginInput,
   createPermissionController,
   migrateLegacyOriginsOnUpdate,
+  updatePendingBadge,
 } = require('../src/permissions.js');
 
 function createChromeStub(overrides = {}) {
@@ -29,6 +30,7 @@ function createChromeStub(overrides = {}) {
         return true;
       },
       remove: async (perm) => {
+        if (overrides.removeWillFail) return false;
         for (const pattern of perm.origins || []) state.grantedOrigins.delete(pattern);
         return true;
       },
@@ -48,6 +50,10 @@ function createChromeStub(overrides = {}) {
         },
         set: async (items) => { Object.assign(state.stored, items); },
       },
+    },
+    action: {
+      setBadgeText: async (details) => { state.badgeText = details.text; },
+      setBadgeBackgroundColor: async () => {},
     },
   };
   return { chromeStub, state };
@@ -137,6 +143,42 @@ test('removeOrigin drops permission and unregisters matching host', async () => 
 
   assert.equal(result.ok, true);
   assert.deepEqual(state.registrations[0].matches, ['https://other.example/*']);
+});
+
+test('removeOrigin reports failure instead of claiming success', async () => {
+  const { chromeStub, state } = createChromeStub({
+    grantedOrigins: ['https://gitlab.com/*'],
+    removeWillFail: true,
+  });
+  const controller = createPermissionController(chromeStub);
+
+  const result = await controller.removeOrigin('https://gitlab.com');
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'remove-failed');
+  assert.equal(result.origin, 'https://gitlab.com');
+  // The failed revocation must not alter granted permissions.
+  assert.ok(state.grantedOrigins.has('https://gitlab.com/*'));
+});
+
+test('updatePendingBadge shows badge while pending origins exist and clears it after grant', async () => {
+  const { chromeStub, state } = createChromeStub({
+    stored: { [PENDING_ORIGINS_STORAGE_KEY]: ['https://gitlab.com'] },
+  });
+
+  await updatePendingBadge(chromeStub);
+  assert.equal(state.badgeText, '!');
+
+  const controller = createPermissionController(chromeStub);
+  await controller.requestOrigin('https://gitlab.com');
+  await updatePendingBadge(chromeStub);
+  assert.equal(state.badgeText, '');
+});
+
+test('updatePendingBadge is a no-op without chrome.action', async () => {
+  const { chromeStub } = createChromeStub();
+  delete chromeStub.action;
+  await updatePendingBadge(chromeStub); // must not throw
 });
 
 test('permission revocation re-syncs registrations to granted hosts', async () => {
