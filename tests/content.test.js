@@ -643,7 +643,7 @@ test('renders an accessible six-dot drag handle with grab affordances', () => {
 
   assert.equal(rendered.handle.tagName, 'BUTTON');
   assert.equal(rendered.handle.getAttribute('type'), 'button');
-  assert.equal(rendered.handle.getAttribute('aria-label'), '拖动调整位置，双击恢复默认位置');
+  assert.equal(rendered.handle.getAttribute('aria-label'), '拖动调整位置，双击恢复默认位置。焦点下可用方向键微调，Home 键恢复默认位置。');
   assert.equal(rendered.handleTooltip.textContent, '拖动调整位置');
   assert.equal(rendered.handleIcon.tagName, 'SVG');
   assert.equal(rendered.handleIcon.querySelectorAll('circle').length, 6);
@@ -756,6 +756,26 @@ test('restores a shared stored position and falls back from invalid data', async
   assert.equal(rendered.host.getAttribute('data-edge'), 'top');
   assert.equal(readPixelStyle(rendered.host, '--reference-top'), 8);
   assert.equal(readPixelStyle(rendered.host, '--reference-left'), 560);
+});
+
+test('pressing Home on a focused handle clears storage and restores top center', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 1,
+        position: { edge: 'left', ratio: 0.8 },
+      },
+    },
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  const homeKey = rendered.handle.dispatchEvent({ type: 'keydown', key: 'Home' });
+  await harness.flushMicrotasks();
+
+  assert.deepEqual(harness.storageCalls.remove, [POSITION_STORAGE_KEY]);
+  assert.equal(rendered.host.getAttribute('data-edge'), 'top');
+  assert.equal(readPixelStyle(rendered.host, '--reference-left'), 560);
+  assert.equal(readPixelStyle(rendered.host, '--reference-top'), 8);
 });
 
 test('double-clicking the handle clears storage and restores top center', async () => {
