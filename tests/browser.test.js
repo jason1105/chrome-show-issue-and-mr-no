@@ -318,6 +318,38 @@ async function waitForValue(client, expression, description) {
   throw new Error(`Timed out waiting for ${description}; last value: ${lastValue}`);
 }
 
+async function waitForStoredSearchState(
+  browserClient,
+  debuggerAddress,
+  extensionId,
+  expectedState,
+) {
+  const optionsUrl = `chrome-extension://${extensionId}/src/options.html`;
+  const { targetId } = await browserClient.send('Target.createTarget', {
+    url: optionsUrl,
+    background: true,
+  });
+  let observerClient;
+
+  try {
+    const target = await findPageTarget(debuggerAddress, optionsUrl);
+    observerClient = await CdpClient.connect(target.webSocketDebuggerUrl);
+    await observerClient.send('Runtime.enable');
+    return await waitForValue(observerClient, `(async () => {
+      const result = await chrome.storage.local.get('gitlabReferenceConfig');
+      const searchState = result.gitlabReferenceConfig?.searchState;
+      if (
+        searchState?.query !== ${JSON.stringify(expectedState.query)}
+        || searchState?.listFilter !== ${JSON.stringify(expectedState.listFilter)}
+      ) return null;
+      return searchState;
+    })()`, 'persisted Open items search state in extension storage');
+  } finally {
+    observerClient?.close();
+    await browserClient.send('Target.closeTarget', { targetId }).catch(() => {});
+  }
+}
+
 async function clickAt(client, x, y) {
   await client.send('Input.dispatchMouseEvent', {
     type: 'mousePressed',
@@ -421,6 +453,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
   let bidiClient;
   let cdpClient;
   let extensionId;
+  let debuggerAddress;
 
   try {
     const driverPort = await reservePort();
@@ -440,6 +473,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     const session = await createWebDriverSession(driverUrl, chromeExecutable, profileDirectory);
     sessionId = session.sessionId;
     const capabilities = session.capabilities;
+    debuggerAddress = capabilities['goog:chromeOptions'].debuggerAddress;
 
     bidiClient = await JsonRpcClient.connect(capabilities.webSocketUrl, 'WebDriver BiDi');
     const installResult = await bidiClient.send('webExtension.install', {
@@ -448,10 +482,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     extensionId = installResult.extension;
     assert.match(extensionId, /^[a-p]{32}$/);
 
-    const target = await findPageTarget(
-      capabilities['goog:chromeOptions'].debuggerAddress,
-      'about:blank',
-    );
+    const target = await findPageTarget(debuggerAddress, 'about:blank');
     cdpClient = await CdpClient.connect(target.webSocketDebuggerUrl);
     await cdpClient.send('Runtime.enable');
     await cdpClient.send('Page.enable');
@@ -586,16 +617,157 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     assert.match(openItems.refreshText, /刷新列表/);
     assert.deepEqual(requestCounts, { issues: 1, mergeRequests: 1 });
 
-    await clickAt(cdpClient, openItems.refreshCenterX, openItems.refreshCenterY);
-    assert.equal(await waitForValue(cdpClient, `(() => {
+    const localSearch = await cdpClient.evaluate(`(() => {
       const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
       const panel = shadow?.querySelector('[data-open-items-panel]');
-      const refreshed = panel?.querySelector('[data-kind="issue"][data-iid="124"]');
-      return !panel?.hidden
-        && shadow.querySelector('[data-reference-trigger]')?.getAttribute('aria-expanded') === 'true'
-        && refreshed?.querySelector('[data-open-item-title]')?.textContent === 'Refreshed issue';
-    })()`, 'refreshed Open items list'), true);
+      const search = () => panel?.querySelector('[data-open-items-search]');
+      const filter = (kind) => panel?.querySelector('[data-open-items-filter="' + kind + '"]');
+      if (!panel || !search() || !filter('all') || !filter('issue') || !filter('merge-request')) {
+        return null;
+      }
+      const snapshot = () => ({
+        rows: [...panel.querySelectorAll('[data-open-item]')].map((row) => ({
+          kind: row.getAttribute('data-kind'),
+          iid: row.getAttribute('data-iid'),
+        })),
+        total: panel.querySelector('[data-open-items-total]')?.textContent,
+        empty: panel.querySelector('[data-open-items-empty]')?.textContent || null,
+        activeFilter: [...panel.querySelectorAll('[data-open-items-filter]')]
+          .find((button) => button.getAttribute('aria-pressed') === 'true')
+          ?.getAttribute('data-open-items-filter'),
+      });
+      const setQuery = (value) => {
+        const input = search();
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      setQuery('another');
+      const title = snapshot();
+      setQuery('#123');
+      const issueReference = snapshot();
+      setQuery('!456');
+      const mergeRequestReference = snapshot();
+      setQuery('open');
+      filter('issue').click();
+      const combined = snapshot();
+      setQuery('missing');
+      const empty = snapshot();
+      setQuery('mr');
+      filter('merge-request').click();
+      const focusedSearch = search();
+      focusedSearch.focus();
+      focusedSearch.setSelectionRange(0, 2);
+      return {
+        title,
+        issueReference,
+        mergeRequestReference,
+        combined,
+        empty,
+        final: snapshot(),
+        searchFocused: shadow.activeElement === focusedSearch,
+        selection: [focusedSearch.selectionStart, focusedSearch.selectionEnd],
+      };
+    })()`);
+    assert.deepEqual(localSearch, {
+      title: {
+        rows: [{ kind: 'issue', iid: '124' }],
+        total: '1',
+        empty: null,
+        activeFilter: 'all',
+      },
+      issueReference: {
+        rows: [{ kind: 'issue', iid: '123' }],
+        total: '1',
+        empty: null,
+        activeFilter: 'all',
+      },
+      mergeRequestReference: {
+        rows: [{ kind: 'merge-request', iid: '456' }],
+        total: '1',
+        empty: null,
+        activeFilter: 'all',
+      },
+      combined: {
+        rows: [],
+        total: '0',
+        empty: '没有匹配的 Open items',
+        activeFilter: 'issue',
+      },
+      empty: {
+        rows: [],
+        total: '0',
+        empty: '没有匹配的 Open items',
+        activeFilter: 'issue',
+      },
+      final: {
+        rows: [{ kind: 'merge-request', iid: '456' }],
+        total: '1',
+        empty: null,
+        activeFilter: 'merge-request',
+      },
+      searchFocused: true,
+      selection: [0, 2],
+    });
+    assert.deepEqual(requestCounts, { issues: 1, mergeRequests: 1 });
+
+    await clickAt(cdpClient, openItems.refreshCenterX, openItems.refreshCenterY);
+    const refreshedSearch = await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
+      const search = panel?.querySelector('[data-open-items-search]');
+      const refresh = panel?.querySelector('[data-refresh-open-items]');
+      const refreshed = panel?.querySelector('[data-kind="merge-request"][data-iid="456"]');
+      if (
+        panel?.hidden
+        || shadow.querySelector('[data-reference-trigger]')?.getAttribute('aria-expanded') !== 'true'
+        || refreshed?.querySelector('[data-open-item-title]')?.textContent !== 'Refreshed MR'
+      ) return null;
+      return {
+        query: search?.value,
+        activeFilter: panel.querySelector('[data-open-items-filter="merge-request"]')
+          ?.getAttribute('aria-pressed'),
+        refreshFocused: shadow.activeElement === refresh,
+      };
+    })()`, 'refreshed filtered Open items list');
+    assert.deepEqual(refreshedSearch, {
+      query: 'mr',
+      activeFilter: 'true',
+      refreshFocused: true,
+    });
     assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
+
+    assert.deepEqual(
+      await waitForStoredSearchState(cdpClient, debuggerAddress, extensionId, {
+        query: 'mr',
+        listFilter: 'merge-request',
+      }),
+      { query: 'mr', listFilter: 'merge-request' },
+    );
+    await cdpClient.send('Page.reload');
+    const restoredSearch = await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const trigger = shadow?.querySelector('[data-reference-trigger]');
+      if (!trigger) return null;
+      const panel = shadow.querySelector('[data-open-items-panel]');
+      if (panel?.hidden) trigger.focus();
+      const search = panel?.querySelector('[data-open-items-search]');
+      const filter = panel?.querySelector('[data-open-items-filter="merge-request"]');
+      const row = panel?.querySelector('[data-kind="merge-request"][data-iid="456"]');
+      if (panel?.hidden || search?.value !== 'mr' || filter?.getAttribute('aria-pressed') !== 'true') {
+        return null;
+      }
+      return {
+        query: search.value,
+        activeFilter: filter.getAttribute('aria-pressed'),
+        iid: row?.getAttribute('data-iid'),
+      };
+    })()`, 'persisted Open items search after reload');
+    assert.deepEqual(restoredSearch, {
+      query: 'mr',
+      activeFilter: 'true',
+      iid: '456',
+    });
+    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
 
     const dragStart = await cdpClient.evaluate(`(() => {
       const host = document.querySelector('#gitlab-reference-badge-host');
@@ -791,8 +963,16 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     assert.ok(scrolled.scrollY >= 1800);
     assert.ok(Math.abs(scrolled.top - initial.top) < 0.5);
 
+    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
     await cdpClient.evaluate(`document.querySelector('#gitlab-reference-badge-host')
       .shadowRoot.querySelector('[data-reference-trigger]').focus()`);
+    assert.equal(await waitForValue(cdpClient, `(() => {
+      const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
+      const panel = shadow?.querySelector('[data-open-items-panel]');
+      return !panel?.hidden
+        && panel.querySelector('[data-kind="merge-request"][data-iid="456"]') !== null;
+    })()`, 'fresh Open items list after keyboard focus'), true);
+    assert.deepEqual(requestCounts, { issues: 4, mergeRequests: 4 });
     await cdpClient.send('Input.dispatchKeyEvent', {
       type: 'keyDown',
       key: 'Enter',
@@ -849,7 +1029,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     assert.equal(await cdpClient.evaluate(
       `document.querySelectorAll('#gitlab-reference-badge-host').length`,
     ), 1);
-    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
+    assert.deepEqual(requestCounts, { issues: 4, mergeRequests: 4 });
 
     await cdpClient.evaluate(`document.querySelector('#gitlab-reference-badge-host')
       .shadowRoot.querySelector('[data-reference-trigger]').focus()`);
@@ -881,7 +1061,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
       ariaCurrent: 'page',
       marker: '当前',
     });
-    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
+    assert.deepEqual(requestCounts, { issues: 4, mergeRequests: 4 });
 
     await clickAt(cdpClient, mergeRequest.centerX, mergeRequest.centerY);
     assert.equal(await waitForValue(cdpClient, `(async () => {
@@ -935,7 +1115,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     })()`, 'Merge Request navigation link');
     assert.equal(mergeRequestLink.href, `${origin}/acme/platform/-/merge_requests/456`);
     assert.equal(mergeRequestLink.hit, '456');
-    assert.deepEqual(requestCounts, { issues: 3, mergeRequests: 3 });
+    assert.deepEqual(requestCounts, { issues: 4, mergeRequests: 4 });
     await cdpClient.send('Input.dispatchMouseEvent', {
       type: 'mouseMoved',
       x: mergeRequestLink.centerX,
@@ -968,22 +1148,39 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     const initialOptions = await waitForValue(cdpClient, `(() => {
       const form = document.querySelector('#settings-form');
       const status = document.querySelector('#status');
-      if (!form || !status || document.readyState !== 'complete') return null;
+      const listFilter = document.querySelector('#list-filter');
+      const rememberSearch = document.querySelector('#remember-search');
+      const cacheTtl = document.querySelector('#cache-ttl');
+      const maxItems = document.querySelector('#max-items');
+      const loadingMode = document.querySelector('#loading-mode');
+      const showLastRefresh = document.querySelector('#show-last-refresh');
+      const touchDrag = document.querySelector('#touch-drag');
+      const keyboardStep = document.querySelector('#keyboard-step');
+      const initialized = document.readyState === 'complete'
+        && listFilter?.value === 'all'
+        && rememberSearch?.checked === true
+        && cacheTtl?.value === '60'
+        && maxItems?.value === '100'
+        && loadingMode?.value === 'parallel'
+        && showLastRefresh?.checked === true
+        && touchDrag?.checked === true
+        && keyboardStep?.value === '8';
+      if (!form || !status || !initialized) return null;
       return {
-        listFilter: document.querySelector('#list-filter').value,
-        rememberSearch: document.querySelector('#remember-search').checked,
-        cacheTtlSeconds: document.querySelector('#cache-ttl').value,
-        maxItemsPerType: document.querySelector('#max-items').value,
-        loadingMode: document.querySelector('#loading-mode').value,
-        showLastRefresh: document.querySelector('#show-last-refresh').checked,
-        touchDrag: document.querySelector('#touch-drag').checked,
-        keyboardStep: document.querySelector('#keyboard-step').value,
+        listFilter: listFilter.value,
+        rememberSearch: rememberSearch.checked,
+        cacheTtlSeconds: cacheTtl.value,
+        maxItemsPerType: maxItems.value,
+        loadingMode: loadingMode.value,
+        showLastRefresh: showLastRefresh.checked,
+        touchDrag: touchDrag.checked,
+        keyboardStep: keyboardStep.value,
         status: status.textContent,
       };
     })()`, 'initial extension settings');
     assert.deepEqual(initialOptions, {
       listFilter: 'all',
-      rememberSearch: false,
+      rememberSearch: true,
       cacheTtlSeconds: '60',
       maxItemsPerType: '100',
       loadingMode: 'parallel',
@@ -1043,7 +1240,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
       return status?.textContent === '已恢复默认设置'
         && status.getAttribute('data-status-kind') === 'success'
         && document.querySelector('#list-filter')?.value === 'all'
-        && document.querySelector('#remember-search')?.checked === false
+        && document.querySelector('#remember-search')?.checked === true
         && document.querySelector('#cache-ttl')?.value === '60'
         && document.querySelector('#max-items')?.value === '100'
         && document.querySelector('#loading-mode')?.value === 'parallel'
@@ -1057,7 +1254,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
       document.readyState === 'complete'
       && document.querySelector('#status')?.textContent === ''
       && document.querySelector('#list-filter')?.value === 'all'
-      && document.querySelector('#remember-search')?.checked === false
+      && document.querySelector('#remember-search')?.checked === true
       && document.querySelector('#cache-ttl')?.value === '60'
       && document.querySelector('#max-items')?.value === '100'
       && document.querySelector('#loading-mode')?.value === 'parallel'

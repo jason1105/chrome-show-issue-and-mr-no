@@ -64,6 +64,40 @@ test('normalizes defaults, bounds, enum values, and ignores protected overrides'
   assert.equal(normalized.user.touchDrag, false);
   assert.equal(normalized.user.keyboardStep, 50);
   assert.equal(normalized.protected, undefined);
+  assert.deepEqual(normalized.searchState, { query: '', listFilter: null });
+});
+
+test('migrates version 1 search preferences without changing an explicit opt-out', () => {
+  const explicitOptOut = migrateConfig({
+    version: 1,
+    user: { rememberSearch: false },
+    userOverrides: { rememberSearch: true },
+  });
+  const defaultDerivedOptOut = migrateConfig({
+    version: 1,
+    user: { rememberSearch: false },
+    userOverrides: {},
+  });
+
+  assert.equal(explicitOptOut.version, 2);
+  assert.equal(explicitOptOut.user.rememberSearch, false);
+  assert.equal(defaultDerivedOptOut.version, 2);
+  assert.equal(defaultDerivedOptOut.user.rememberSearch, true);
+  assert.deepEqual(defaultDerivedOptOut.searchState, { query: '', listFilter: null });
+});
+
+test('normalizes persisted search query and type filter', () => {
+  assert.deepEqual(normalizeConfig({
+    version: 2,
+    searchState: { query: '  release blocker  ', listFilter: 'merge-request' },
+  }).searchState, {
+    query: '  release blocker  ',
+    listFilter: 'merge-request',
+  });
+  assert.deepEqual(normalizeConfig({
+    version: 2,
+    searchState: { query: 42, listFilter: 'invalid' },
+  }).searchState, { query: '', listFilter: null });
 });
 
 test('migrates the legacy position key into the versioned configuration', async () => {
@@ -92,8 +126,10 @@ test('migrates an unversioned configuration and persists the current schema', as
     position: { edge: 'left', ratio: 0.75 },
   };
   const migrated = migrateConfig(unversioned);
-  assert.equal(migrated.version, 1);
+  assert.equal(migrated.version, 2);
   assert.deepEqual(migrated.userOverrides, { listFilter: true, cacheTtlSeconds: true });
+  assert.equal(migrated.user.rememberSearch, true);
+  assert.deepEqual(migrated.searchState, { query: '', listFilter: null });
 
   const storage = createMemoryStorage({ [CONFIG_STORAGE_KEY]: unversioned });
   const store = createConfigStore(storage);
@@ -103,7 +139,7 @@ test('migrates an unversioned configuration and persists the current schema', as
   assert.equal(effective.cacheTtlSeconds, 120);
   assert.equal(effective.maxItemsPerType, 20);
   assert.deepEqual(effective.position, { edge: 'left', ratio: 0.75 });
-  assert.equal(storage.data[CONFIG_STORAGE_KEY].version, 1);
+  assert.equal(storage.data[CONFIG_STORAGE_KEY].version, 2);
   assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].userOverrides, {
     listFilter: true,
     cacheTtlSeconds: true,
@@ -180,6 +216,70 @@ test('merges a fresh stored snapshot before writing a position from another cont
   assert.deepEqual(stored.position, { edge: 'right', ratio: 0.9 });
 });
 
+test('persists and clears search state through the shared configuration record', async () => {
+  const storage = createMemoryStorage();
+  const store = createConfigStore(storage);
+  await store.load('https://git.example.test');
+
+  let effective = await store.setSearchState({
+    query: '#123',
+    listFilter: 'issue',
+  }, 'https://git.example.test');
+  assert.deepEqual(effective.searchState, { query: '#123', listFilter: 'issue' });
+  assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].searchState, {
+    query: '#123',
+    listFilter: 'issue',
+  });
+
+  effective = await store.setSearchState(null, 'https://git.example.test');
+  assert.deepEqual(effective.searchState, { query: '', listFilter: null });
+  assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].searchState, {
+    query: '',
+    listFilter: null,
+  });
+});
+
+test('clears persisted search state when search memory is disabled', async () => {
+  const storage = createMemoryStorage({
+    [CONFIG_STORAGE_KEY]: {
+      version: 2,
+      searchState: { query: 'release', listFilter: 'merge-request' },
+    },
+  });
+  const store = createConfigStore(storage);
+  await store.load('https://git.example.test');
+
+  const effective = await store.save({ rememberSearch: false }, 'https://git.example.test');
+
+  assert.equal(effective.rememberSearch, false);
+  assert.deepEqual(effective.searchState, { query: '', listFilter: null });
+  assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].searchState, {
+    query: '',
+    listFilter: null,
+  });
+});
+
+test('ignores a stale search-state write after another context disables search memory', async () => {
+  const storage = createMemoryStorage();
+  const optionsStore = createConfigStore(storage);
+  const contentStore = createConfigStore(storage);
+  await optionsStore.load('https://git.example.test');
+  await contentStore.load('https://git.example.test');
+
+  await optionsStore.save({ rememberSearch: false }, 'https://git.example.test');
+  const effective = await contentStore.setSearchState({
+    query: 'release',
+    listFilter: 'merge-request',
+  }, 'https://git.example.test');
+
+  assert.equal(effective.rememberSearch, false);
+  assert.deepEqual(effective.searchState, { query: '', listFilter: null });
+  assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].searchState, {
+    query: '',
+    listFilter: null,
+  });
+});
+
 test('updates an existing store when another context changes configuration', async () => {
   const storage = createMemoryStorage();
   const changes = new Set();
@@ -213,7 +313,7 @@ test('keeps the previous in-memory configuration when reset persistence fails', 
       sites: { 'https://git.example.test': { loadingMode: 'sequential' } },
     },
   });
-  let rejectNextSet = true;
+  let rejectNextSet = false;
   const originalSet = storage.set;
   storage.set = (value) => {
     if (rejectNextSet) {
@@ -224,6 +324,7 @@ test('keeps the previous in-memory configuration when reset persistence fails', 
   };
   const store = createConfigStore(storage);
   await store.load('https://git.example.test');
+  rejectNextSet = true;
 
   await assert.rejects(store.reset('https://git.example.test'), /quota exceeded/);
   assert.equal(store.getEffective('https://git.example.test').listFilter, 'issue');
