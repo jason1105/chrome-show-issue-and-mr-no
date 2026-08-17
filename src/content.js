@@ -108,6 +108,7 @@
     query: defaultConfig.searchState?.query || '',
     listFilter: defaultConfig.searchState?.listFilter || defaultConfig.listFilter || 'all',
     searchOwned: false,
+    truncated: { issues: false, mergeRequests: false },
   };
 
   function formatReference(reference) {
@@ -227,25 +228,57 @@
     return `${reference.origin}/${projectPath}/-/${resource}/${iid}`;
   }
 
-  async function fetchAllItems(reference, kind) {
+  function createAbortSignalSupport() {
+    // Environments without AbortController (older browsers, test harness) fall
+    // back to fetch without a signal; the request still completes or rejects.
+    return typeof root.AbortController === 'function'
+      ? new root.AbortController()
+      : null;
+  }
+
+  async function fetchWithTimeout(url) {
+    const controller = createAbortSignalSupport();
+    let timerId = null;
+    const timeoutMs = activeConfig.requestTimeoutMs || 10000;
+    if (controller) {
+      timerId = root.setTimeout(() => controller.abort(), timeoutMs);
+    }
+    try {
+      return await root.fetch(url, {
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' },
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+    } catch (error) {
+      if (controller?.signal?.aborted) throw new Error(`GitLab API request timed out after ${timeoutMs}ms`);
+      throw error;
+    } finally {
+      if (timerId !== null) root.clearTimeout(timerId);
+    }
+  }
+
+  async function fetchAllItems(reference, kind, { startPage = 1 } = {}) {
     const resource = kind === 'issue' ? 'issues' : 'merge_requests';
     const limit = Math.min(
       activeConfig.maxItemsPerType,
       activeConfig.protected?.maxItemsPerType || 100,
     );
     const perPage = Math.min(limit, activeConfig.protected?.maxItemsPerPage || 100);
+    const paginated = activeConfig.loadingMode === 'paginated';
+    const batchLimit = paginated
+      ? Math.min(limit, startPage > 1 ? perPage : (activeConfig.maxItemsPerBatch || perPage))
+      : limit;
     const items = [];
     const visitedPages = new Set();
-    let page = '1';
+    let page = String(startPage);
+    let truncated = false;
+    let nextStartPage = 1;
 
     while (page) {
       if (visitedPages.has(page)) throw new Error('Invalid GitLab pagination');
       visitedPages.add(page);
 
-      const response = await root.fetch(buildItemsApiUrl(reference, resource, page, perPage), {
-        credentials: 'same-origin',
-        headers: { accept: 'application/json' },
-      });
+      const response = await fetchWithTimeout(buildItemsApiUrl(reference, resource, page, perPage));
       if (!response?.ok) throw new Error(`GitLab API returned ${response?.status || 'an error'}`);
 
       const body = await response.json();
@@ -262,19 +295,43 @@
             ? item.web_url
             : buildFallbackWebUrl(reference, kind, iid),
         });
-        if (items.length >= limit) break;
+        if (items.length >= batchLimit) break;
       }
 
-      if (items.length >= limit) break;
+      if (items.length >= batchLimit) {
+        const breakNext = response.headers?.get('X-Next-Page') || '';
+        nextStartPage = /^[1-9][0-9]*$/.test(breakNext) ? Number(breakNext) : 0;
+        truncated = batchLimit < limit && nextStartPage > 0;
+        break;
+      }
 
       const nextPage = response.headers?.get('X-Next-Page') || '';
       if (nextPage && !/^[1-9][0-9]*$/.test(nextPage)) {
         throw new Error('GitLab API returned an invalid next page');
       }
+      nextStartPage = Number(nextPage) || 0;
       page = nextPage;
     }
 
-    return items;
+    return { items, truncated, nextStartPage };
+  }
+
+  function mergeLoadedItems(existing, incoming, limit) {
+    if (!existing?.length) return { items: incoming, truncated: false };
+    const seen = new Set(existing.map((item) => `${item.kind}:${item.iid}`));
+    const merged = [...existing];
+    let truncated = false;
+    for (const item of incoming) {
+      const key = `${item.kind}:${item.iid}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+      if (merged.length >= limit) {
+        truncated = merged.length >= limit;
+        break;
+      }
+    }
+    return { items: merged, truncated };
   }
 
   function clearFeedbackTimer() {
@@ -963,16 +1020,43 @@
     }
 
     for (const item of items) group.append(createOpenItemRow(item));
+
+    const kindKey = name === 'issues' ? 'issues' : 'mergeRequests';
+    const limit = Math.min(
+      activeConfig.maxItemsPerType,
+      activeConfig.protected?.maxItemsPerType || 100,
+    );
+    const loadMore = root.document.createElement('button');
+    loadMore.setAttribute('type', 'button');
+    loadMore.setAttribute('data-open-items-load-more', kind);
+    if (navigation.loadingMore?.[kindKey]) {
+      loadMore.setAttribute('aria-busy', 'true');
+      loadMore.disabled = true;
+      loadMore.textContent = '正在加载更多…';
+    } else if (navigation.truncated?.[kindKey] && items.length < limit) {
+      loadMore.textContent = `加载更多（已加载 ${items.length} 条）`;
+      loadMore.addEventListener('click', handleLoadMore);
+    } else {
+      if (items.length >= limit) {
+        loadMore.textContent = `已达到上限 ${limit} 条`;
+      } else {
+        loadMore.textContent = `已加载全部 ${items.length} 条`;
+      }
+      loadMore.disabled = true;
+    }
+    group.append(loadMore);
     return group;
   }
 
   function formatLastRefresh(timestamp) {
     if (!Number.isFinite(timestamp)) return '';
     try {
+      const elapsedMs = root.Date.now() - timestamp;
+      if (elapsedMs < 60000) return '刚刚更新';
+      if (elapsedMs < 3600000) return `${Math.floor(elapsedMs / 60000)} 分钟前更新`;
       return new root.Date(timestamp).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit',
       });
     } catch {
       return '';
@@ -1160,6 +1244,11 @@
       existingLastRefresh?.remove();
     }
     refresh.setAttribute('aria-busy', navigation.loading ? 'true' : 'false');
+    if (navigation.loading) {
+      refresh.setAttribute('disabled', '');
+    } else {
+      refresh.removeAttribute('disabled');
+    }
     if (search.value !== navigation.query) search.value = navigation.query;
     for (const filter of panel.querySelectorAll('[data-open-items-filter]')) {
       const kind = filter.getAttribute('data-open-items-filter');
@@ -1180,6 +1269,13 @@
       && host === root.document.getElementById(HOST_ID);
   }
 
+  function buildErrorMessage(issueResult, mergeRequestResult) {
+    const failed = [issueResult, mergeRequestResult].filter((result) => result?.status === 'rejected');
+    if (failed.length === 0) return '';
+    if (failed.length === 2) return '加载失败，请重试';
+    return issueResult?.status === 'rejected' ? 'Issue 更新失败，MR 已更新' : 'MR 更新失败，Issue 已更新';
+  }
+
   async function loadOpenItems({ force = false } = {}) {
     const requestedProjectKey = navigation.projectKey;
     await configurationReady;
@@ -1195,6 +1291,9 @@
     if (!force && isCurrentCache()) {
       navigation.issues = navigation.cache.issues;
       navigation.mergeRequests = navigation.cache.mergeRequests;
+      navigation.truncated = navigation.cache.truncated || { issues: false, mergeRequests: false };
+      navigation.nextStartPage = navigation.cache.nextStartPage
+        || { issues: 1, mergeRequests: 1 };
       navigation.lastLoadedAt = navigation.cache.loadedAt;
       if (root.Date.now() - navigation.cache.loadedAt < activeConfig.cacheTtlSeconds * 1000) {
         navigation.errors = { issues: false, mergeRequests: false };
@@ -1236,8 +1335,16 @@
       const complete = issueSucceeded && mergeRequestSucceeded;
 
       if (complete) {
-        navigation.issues = issueResult?.value || [];
-        navigation.mergeRequests = mergeRequestResult?.value || [];
+        navigation.issues = issueResult?.value?.items || [];
+        navigation.mergeRequests = mergeRequestResult?.value?.items || [];
+        navigation.truncated = {
+          issues: Boolean(issueResult?.value?.truncated),
+          mergeRequests: Boolean(mergeRequestResult?.value?.truncated),
+        };
+        navigation.nextStartPage = {
+          issues: issueResult?.value?.nextStartPage || 1,
+          mergeRequests: mergeRequestResult?.value?.nextStartPage || 1,
+        };
         navigation.errors = { issues: false, mergeRequests: false };
         navigation.cache = {
           key: projectKey,
@@ -1245,6 +1352,8 @@
           loadedAt: root.Date.now(),
           issues: navigation.issues,
           mergeRequests: navigation.mergeRequests,
+          truncated: navigation.truncated,
+          nextStartPage: navigation.nextStartPage,
         };
         navigation.lastLoadedAt = navigation.cache.loadedAt;
       } else if (hasCompleteSnapshot) {
@@ -1253,14 +1362,18 @@
         navigation.lastLoadedAt = navigation.cache.loadedAt;
         navigation.message = '刷新失败，显示上次结果';
       } else {
-        navigation.issues = issueResult?.status === 'fulfilled' ? issueResult.value : null;
+        navigation.issues = issueResult?.status === 'fulfilled' ? issueResult.value.items : null;
         navigation.mergeRequests = mergeRequestResult?.status === 'fulfilled'
-          ? mergeRequestResult.value
+          ? mergeRequestResult.value.items
           : null;
+        navigation.truncated = { issues: false, mergeRequests: false };
         navigation.errors = {
           issues: Boolean(issueResult?.status === 'rejected'),
           mergeRequests: Boolean(mergeRequestResult?.status === 'rejected'),
         };
+        if (navigation.issues !== null || navigation.mergeRequests !== null) {
+          navigation.message = buildErrorMessage(issueResult, mergeRequestResult);
+        }
       }
       navigation.loading = false;
       navigation.pending = null;
@@ -1268,6 +1381,57 @@
     })();
     navigation.pending = pending;
     return pending;
+  }
+
+  async function loadMoreOpenItems(kind) {
+    const kindKey = kind === 'issue' ? 'issues' : 'mergeRequests';
+    const current = navigation[kindKey];
+    const host = root.document.getElementById(HOST_ID);
+    if (!host || !Array.isArray(current) || navigation.loadingMore?.[kindKey]) return;
+    await configurationReady;
+    if (destroyed || !navigation.reference) return;
+    const generation = navigation.requestGeneration;
+    const projectKey = navigation.projectKey;
+    const startPage = navigation.nextStartPage?.[kindKey] || 1;
+    const limit = Math.min(
+      activeConfig.maxItemsPerType,
+      activeConfig.protected?.maxItemsPerType || 100,
+    );
+    navigation.loadingMore = { ...navigation.loadingMore, [kindKey]: true };
+    renderNavigationPanel(host);
+    try {
+      const { items, truncated, nextStartPage } = await fetchAllItems(
+        navigation.reference,
+        kind,
+        { startPage },
+      );
+      if (!isCurrentNavigationRequest(generation, projectKey, host)) return;
+      const merged = mergeLoadedItems(current, items, limit);
+      navigation[kindKey] = merged.items;
+      navigation.truncated = { ...navigation.truncated, [kindKey]: Boolean(truncated) };
+      navigation.nextStartPage = { ...navigation.nextStartPage, [kindKey]: nextStartPage || 0 };
+      if (navigation.cache && navigation.cache.key === navigation.projectKey) {
+        navigation.cache = {
+          ...navigation.cache,
+          issues: navigation.issues,
+          mergeRequests: navigation.mergeRequests,
+          truncated: navigation.truncated,
+          nextStartPage: navigation.nextStartPage,
+        };
+      }
+    } catch {
+      navigation.message = '加载更多失败，请重试';
+    } finally {
+      navigation.loadingMore = { ...navigation.loadingMore, [kindKey]: false };
+      renderNavigationPanel(host);
+    }
+  }
+
+  function handleLoadMore(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const kind = event.currentTarget.getAttribute('data-open-items-load-more');
+    if (kind === 'issue' || kind === 'merge-request') loadMoreOpenItems(kind);
   }
 
   function openNavigation() {
@@ -2293,6 +2457,9 @@
           navigation.issues = null;
           navigation.mergeRequests = null;
           navigation.errors = { issues: false, mergeRequests: false };
+          navigation.truncated = { issues: false, mergeRequests: false };
+          navigation.loadingMore = { issues: false, mergeRequests: false };
+          navigation.message = '';
         }
         if (host) {
           host.setAttribute('data-touch-drag', effective.touchDrag ? 'true' : 'false');

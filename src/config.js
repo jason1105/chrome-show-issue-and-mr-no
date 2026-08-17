@@ -17,6 +17,8 @@
     rememberSearch: true,
     cacheTtlSeconds: 60,
     maxItemsPerType: 100,
+    maxItemsPerBatch: 50,
+    requestTimeoutMs: 10000,
     loadingMode: 'parallel',
     showLastRefresh: true,
     touchDrag: true,
@@ -110,10 +112,14 @@
         : fallback;
     }
     if (name === 'loadingMode') {
-      return value === 'parallel' || value === 'sequential' ? value : fallback;
+      return value === 'parallel' || value === 'sequential' || value === 'paginated'
+        ? value
+        : fallback;
     }
     if (name === 'cacheTtlSeconds') return normalizeInteger(value, fallback, 5, 300);
     if (name === 'maxItemsPerType') return normalizeInteger(value, fallback, 1, PROTECTED_CONFIG.maxItemsPerType);
+    if (name === 'maxItemsPerBatch') return normalizeInteger(value, fallback, 1, PROTECTED_CONFIG.maxItemsPerPage);
+    if (name === 'requestTimeoutMs') return normalizeInteger(value, fallback, 1000, 60000);
     if (name === 'keyboardStep') return normalizeInteger(value, fallback, 1, 50);
     if (name === 'rememberSearch' || name === 'showLastRefresh' || name === 'touchDrag') {
       return typeof value === 'boolean' ? value : fallback;

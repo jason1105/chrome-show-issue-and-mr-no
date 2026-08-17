@@ -36,6 +36,8 @@ function createOptionsDocument() {
     'remember-search': new Field(),
     'cache-ttl': new Field(),
     'max-items': new Field(),
+    'max-items-batch': new Field(),
+    'request-timeout': new Field(),
     'loading-mode': new Field(),
     'show-last-refresh': new Field(),
     'touch-drag': new Field(),

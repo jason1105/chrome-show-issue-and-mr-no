@@ -354,16 +354,26 @@ function createHarness(initialUrl, options = {}) {
     fetchCalls.push({ url: String(url), init });
     const result = fetchResults[fetchCall];
     fetchCall += 1;
-    if (typeof result === 'function') {
-      try {
-        return Promise.resolve(result(url, init));
-      } catch (error) {
-        return Promise.reject(error);
+    return new Promise((resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new Error('The operation was aborted')));
+      if (typeof result === 'function') {
+        try {
+          resolve(result(url, init));
+        } catch (error) {
+          reject(error);
+        }
+        return;
       }
-    }
-    if (result instanceof Error) return Promise.reject(result);
-    if (result?.promise) return result.promise;
-    return Promise.resolve(result);
+      if (result instanceof Error) {
+        reject(result);
+        return;
+      }
+      if (result?.promise) {
+        result.promise.then(resolve, reject);
+        return;
+      }
+      resolve(result);
+    });
   };
 
   class FakeDate extends Date {
@@ -447,6 +457,7 @@ function createHarness(initialUrl, options = {}) {
     clearTimeout(id) {
       timers.delete(id);
     },
+    AbortController,
   };
 
   vm.runInNewContext(configSource, context, { filename: 'src/config.js' });
@@ -2094,4 +2105,208 @@ test('ignores navigation responses after leaving a detail page', async () => {
   await harness.flushMicrotasks();
 
   assert.equal(getBadge(harness.document).host, null);
+});
+
+test('aborts a request that exceeds the configured timeout', async () => {
+  const issues = deferred();
+  const mergeRequests = jsonResponse([]);
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [issues, mergeRequests],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { requestTimeoutMs: 5000 },
+      },
+    },
+  });
+
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  harness.advanceTimersBy(4999);
+  await harness.flushMicrotasks();
+  assert.match(renderedText(getBadge(harness.document).panel), /正在加载/);
+
+  harness.advanceTimersBy(1);
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  assert.doesNotMatch(renderedText(rendered.panel), /正在加载/);
+});
+
+test('paginated mode loads the first batch and appends more on demand', async () => {
+  const issuePage1 = Array.from({ length: 50 }, (_, index) => ({
+    iid: index + 1,
+    title: `Issue ${index + 1}`,
+  }));
+  const issuePage2 = [{ iid: 51, title: 'Issue 51' }];
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse(issuePage1, { nextPage: '2' }),
+      jsonResponse([]),
+      jsonResponse(issuePage2),
+    ],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 50 },
+      },
+    },
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 50);
+  const loadMore = rendered.panel.querySelector('[data-open-items-load-more="issue"]');
+  assert.notEqual(loadMore.disabled, true);
+  assert.match(loadMore.textContent, /加载更多/);
+
+  loadMore.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  await harness.flushMicrotasks();
+
+  const updated = getBadge(harness.document);
+  assert.equal(updated.panel.querySelectorAll('[data-open-item]').length, 51);
+  const updatedLoadMore = updated.panel.querySelector('[data-open-items-load-more="issue"]');
+  assert.match(updatedLoadMore.textContent, /已加载全部 51 条/);
+  assert.equal(updatedLoadMore.disabled, true);
+});
+
+test('paginated mode load-more continues from the stored next page until done', async () => {
+  const issuePage1 = Array.from({ length: 40 }, (_, index) => ({
+    iid: index + 1,
+    title: `Issue ${index + 1}`,
+  }));
+  const issuePage2 = Array.from({ length: 40 }, (_, index) => ({
+    iid: index + 41,
+    title: `Issue ${index + 41}`,
+  }));
+  const issuePage3 = [{ iid: 81, title: 'Issue 81' }];
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse(issuePage1, { nextPage: '2' }),
+      jsonResponse([]),
+      jsonResponse(issuePage2, { nextPage: '3' }),
+      jsonResponse(issuePage3),
+    ],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 40, maxItemsPerType: 200 },
+      },
+    },
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 40);
+  // One load-more click continues from the stored next page (page 2) and keeps
+  // fetching until no next page remains.
+  rendered.panel.querySelector('[data-open-items-load-more="issue"]').dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  await harness.flushMicrotasks();
+  const updated = getBadge(harness.document);
+  assert.equal(updated.panel.querySelectorAll('[data-open-item]').length, 81);
+  const updatedLoadMore = updated.panel.querySelector('[data-open-items-load-more="issue"]');
+  assert.equal(updatedLoadMore.disabled, true);
+  assert.match(updatedLoadMore.textContent, /已加载全部 81 条/);
+});
+
+test('paginated mode with exact batch size and no next page shows all-loaded', async () => {
+  const issuePage1 = Array.from({ length: 50 }, (_, index) => ({
+    iid: index + 1,
+    title: `Issue ${index + 1}`,
+  }));
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse(issuePage1, { nextPage: '' }),
+      jsonResponse([]),
+    ],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 50 },
+      },
+    },
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 50);
+  const loadMore = rendered.panel.querySelector('[data-open-items-load-more="issue"]');
+  assert.equal(loadMore.disabled, true);
+  assert.match(loadMore.textContent, /已加载全部 50 条/);
+});
+
+test('shows relative last-refresh times', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [jsonResponse([{ iid: 1, title: 'One' }]), jsonResponse([])],
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.match(rendered.panel.querySelector('[data-last-refresh]').textContent, /刚刚更新/);
+
+  harness.advanceTimersBy(5 * 60 * 1000);
+  getBadge(harness.document).panel.querySelector('[data-refresh-open-items]')
+    .dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  assert.match(
+    getBadge(harness.document).panel.querySelector('[data-last-refresh]').textContent,
+    /5 分钟前更新/,
+  );
+});
+
+test('reports a partial failure message when only one kind fails', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse([{ iid: 1, title: 'Ok issue' }]),
+      new Error('MR API failed'),
+    ],
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.match(renderedText(rendered.panel), /MR 更新失败，Issue 已更新/);
+  assert.match(renderedText(rendered.panel), /Ok issue/);
+});
+
+test('discards a late load-more response after a refresh supersedes it', async () => {
+  const issuePage1 = Array.from({ length: 50 }, (_, index) => ({
+    iid: index + 1,
+    title: `Issue ${index + 1}`,
+  }));
+  const loadMoreResponse = deferred();
+  const refreshIssues = deferred();
+  const refreshMergeRequests = jsonResponse([]);
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse(issuePage1, { nextPage: '2' }),
+      jsonResponse([]),
+      loadMoreResponse,
+      refreshIssues,
+      refreshMergeRequests,
+    ],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 50 },
+      },
+    },
+  });
+
+  const rendered = await openAndLoad(harness);
+  const loadMore = rendered.panel.querySelector('[data-open-items-load-more="issue"]');
+  loadMore.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+
+  // While the load-more request is in flight, the user refreshes the list.
+  getBadge(harness.document).panel.querySelector('[data-refresh-open-items]')
+    .dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+
+  // The refresh completes first with fresh data.
+  refreshIssues.resolve(jsonResponse([{ iid: 900, title: 'Fresh issue' }]));
+  await harness.flushMicrotasks();
+  assert.match(renderedText(getBadge(harness.document).panel), /Fresh issue/);
+
+  // The stale load-more response arrives late and must be discarded.
+  loadMoreResponse.resolve(jsonResponse([{ iid: 51, title: 'Stale issue 51' }]));
+  await harness.flushMicrotasks();
+  await harness.flushMicrotasks();
+  assert.doesNotMatch(renderedText(getBadge(harness.document).panel), /Stale issue 51/);
+  assert.match(renderedText(getBadge(harness.document).panel), /Fresh issue/);
 });
