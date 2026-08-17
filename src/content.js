@@ -723,6 +723,16 @@
   }
 
   function handleDragKeydown(event) {
+    if (event.key === 'Home') {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelDrag();
+      positionGeneration += 1;
+      position = { ...DEFAULT_POSITION };
+      applyPosition();
+      clearStoredPosition();
+      return;
+    }
     const horizontal = position.edge === 'top';
     const direction = horizontal
       ? (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0)
@@ -2232,7 +2242,7 @@
     const handle = root.document.createElement('button');
     handle.setAttribute('type', 'button');
     handle.setAttribute('data-drag-handle', '');
-    handle.setAttribute('aria-label', '拖动调整位置，双击恢复默认位置');
+    handle.setAttribute('aria-label', '拖动调整位置，双击恢复默认位置。焦点下可用方向键微调，Home 键恢复默认位置。');
     handle.setAttribute('aria-describedby', 'gitlab-reference-drag-tooltip');
     handle.addEventListener('pointerdown', handleDragPointerDown);
     handle.addEventListener('pointermove', handleDragPointerMove);
