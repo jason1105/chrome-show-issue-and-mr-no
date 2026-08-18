@@ -51,4 +51,15 @@
       permissions.syncRegisteredScripts();
     });
   }
+
+  // Test/observability hook: replying proves this service worker executed
+  // and importScripts('permissions.js') resolved in the real SW environment.
+  if (chromeApi.runtime?.onMessage) {
+    chromeApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message?.type === 'gitlab-reference-permissions-ping') {
+        sendResponse({ permissionsModuleLoaded: Boolean(root.GitLabReferencePermissions) });
+      }
+      return false;
+    });
+  }
 })(typeof globalThis === 'undefined' ? this : globalThis);
