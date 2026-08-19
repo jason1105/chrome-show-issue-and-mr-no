@@ -68,6 +68,19 @@
             <input id="keyboard-step" type="number" min="1" max="50" step="1" inputmode="numeric">
           </label>
         </fieldset>
+        <fieldset>
+          <legend>实例授权</legend>
+          <p class="field-hint">为需要展示 Issue/MR 编号的 GitLab 实例授权。权限按实例精确授予，可随时撤销。</p>
+          <ul id="granted-origins" class="granted-origins" aria-label="已授权的 GitLab 实例"></ul>
+          <label>
+            <span>GitLab 实例地址</span>
+            <input id="origin-input" type="url" placeholder="https://gitlab.example.com" inputmode="url">
+          </label>
+          <div class="origin-actions">
+            <button id="grant-origin" type="button" class="secondary">授权实例</button>
+          </div>
+          <p id="origin-status" class="status" role="status" aria-live="polite"></p>
+        </fieldset>
         <div class="settings-actions">
           <button id="reset-settings" type="button" class="secondary">恢复默认值</button>
           <button type="submit" class="primary">保存设置</button>
@@ -76,6 +89,7 @@
       </form>
     </main>
     <script src="config.js"></script>
+    <script src="permissions.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

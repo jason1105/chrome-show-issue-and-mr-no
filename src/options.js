@@ -10,10 +10,14 @@
   const store = root.GitLabReferenceConfig.createConfigStore(storage, {
     storageChangeEvents: root.chrome?.storage?.onChanged,
   });
+  const permissionsApi = root.GitLabReferencePermissions
+    ? root.GitLabReferencePermissions.createPermissionController(root.chrome)
+    : null;
   const controller = api.createOptionsController(
     root.document,
     store,
     root.location?.origin || '',
+    permissionsApi,
   );
   controller.init();
 })(typeof globalThis === 'undefined' ? this : globalThis, () => {
@@ -74,12 +78,101 @@
     fields.keyboardStep.value = String(effective.keyboardStep);
   }
 
-  function createOptionsController(document, store, origin) {
+  function createOptionsController(document, store, origin, permissionController = null) {
     const fields = getFields(document);
     const status = document.getElementById('status');
     const form = document.getElementById('settings-form');
     const resetButton = document.getElementById('reset-settings');
     let pending = Promise.resolve();
+
+    const grantedList = document.getElementById('granted-origins');
+    const originInput = document.getElementById('origin-input');
+    const originStatus = document.getElementById('origin-status');
+    const grantButton = document.getElementById('grant-origin');
+
+    function setOriginStatus(message, isError = false) {
+      if (!originStatus) return;
+      originStatus.textContent = message;
+      originStatus.setAttribute('data-status-kind', isError ? 'error' : 'success');
+    }
+
+    function renderGrantedOrigins(origins, pendingOrigins = []) {
+      if (!grantedList) return;
+      grantedList.textContent = '';
+      for (const item of origins) {
+        const li = document.createElement('li');
+        const label = document.createElement('span');
+        label.textContent = item;
+        li.appendChild(label);
+        if (permissionController) {
+          const revoke = document.createElement('button');
+          revoke.type = 'button';
+          revoke.className = 'secondary origin-revoke';
+          revoke.textContent = '撤销';
+          revoke.setAttribute('aria-label', `撤销 ${item} 的授权`);
+          revoke.addEventListener('click', () => {
+            setOriginStatus('');
+            permissionController.removeOrigin(item).then((result) => {
+              if (!result.ok) {
+                setOriginStatus(`撤销 ${item} 的授权失败，请重试`, true);
+                refreshOrigins();
+                return;
+              }
+              setOriginStatus(`已撤销 ${item} 的授权`);
+              refreshOrigins();
+            });
+          });
+          li.appendChild(revoke);
+        }
+        grantedList.appendChild(li);
+      }
+      if (!origins.length) {
+        const li = document.createElement('li');
+        li.className = 'origin-empty';
+        li.textContent = '尚未授权任何实例';
+        grantedList.appendChild(li);
+      }
+      for (const item of pendingOrigins) {
+        if (origins.includes(item)) continue;
+        const li = document.createElement('li');
+        li.className = 'origin-pending';
+        li.textContent = `${item}（待重新授权）`;
+        grantedList.appendChild(li);
+      }
+    }
+
+    function refreshOrigins() {
+      if (!permissionController) return Promise.resolve();
+      return Promise.all([
+        permissionController.listGrantedOrigins(),
+        permissionController.readPendingOrigins(),
+      ]).then(([origins, pendingOrigins]) => {
+        renderGrantedOrigins(origins, pendingOrigins);
+        return origins;
+      });
+    }
+
+    function grantOrigin() {
+      if (!permissionController || !originInput) return;
+      setOriginStatus('');
+      permissionController.requestOrigin(originInput.value).then((result) => {
+        if (!result.ok) {
+          if (result.reason === 'invalid-origin') {
+            setOriginStatus('实例地址无效，请输入完整的 http(s) 地址', true);
+          } else if (result.reason === 'denied') {
+            setOriginStatus('授权被拒绝，可稍后在实例列表中重试', true);
+          } else {
+            setOriginStatus('当前浏览器不支持运行时授权', true);
+          }
+          return;
+        }
+        originInput.value = '';
+        setOriginStatus(`已授权 ${result.origin}`);
+        refreshOrigins();
+      });
+    }
+
+    grantButton?.addEventListener('click', grantOrigin);
 
     function setStatus(message, isError = false) {
       if (!status) return;
@@ -91,6 +184,7 @@
       const effective = await store.load(origin);
       applyEffectiveConfig(fields, effective);
       setStatus('');
+      refreshOrigins();
       return effective;
     }
 
@@ -127,6 +221,7 @@
       flush: () => pending,
       submit,
       reset,
+      refreshOrigins,
     };
   }
 
