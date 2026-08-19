@@ -12,6 +12,7 @@
   const PANEL_GAP = 6;
   const DRAG_THRESHOLD = 4;
   const NAVIGATION_EVENTS = [
+    'glr:navigate',
     'popstate',
     'hashchange',
     'turbo:load',
@@ -1645,6 +1646,13 @@
     });
   }
 
+  function handleNavigationEvent() {
+    if (destroyed) return;
+    // MAIN-world hook fires as soon as pushState/replaceState returns, before
+    // GitLab swaps DOM content; defer to the next frame like other events.
+    scheduleSync();
+  }
+
   function handleMutation() {
     if (root.location.href !== lastUrl) {
       scheduleSync();
@@ -1681,12 +1689,10 @@
     cancelDrag();
     observer?.disconnect();
     observer = null;
-    for (const eventName of NAVIGATION_EVENTS) {
-      const target = eventName === 'popstate' || eventName === 'hashchange'
-        ? root
-        : root.document;
-      target.removeEventListener(eventName, scheduleSync);
+    for (const { target, eventName, listener } of navigationEventListeners) {
+      target.removeEventListener(eventName, listener);
     }
+    navigationEventListeners.length = 0;
     root.document.removeEventListener('DOMContentLoaded', handleDocumentReady);
     root.document.removeEventListener('pointerdown', handleDocumentPointerDown);
     root.removeEventListener('resize', handleResize);
@@ -1774,11 +1780,14 @@
     startObserver();
   }
 
+  const navigationEventListeners = [];
   for (const eventName of NAVIGATION_EVENTS) {
     const target = eventName === 'popstate' || eventName === 'hashchange'
       ? root
       : root.document;
-    target.addEventListener(eventName, scheduleSync);
+    const listener = eventName === 'glr:navigate' ? handleNavigationEvent : scheduleSync;
+    target.addEventListener(eventName, listener);
+    navigationEventListeners.push({ target, eventName, listener });
   }
 
   root.GitLabReferenceBadge = { sync, destroy };
