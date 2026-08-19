@@ -1783,6 +1783,7 @@
   const navigationEventListeners = [];
   for (const eventName of NAVIGATION_EVENTS) {
     const target = eventName === 'popstate' || eventName === 'hashchange'
+      || eventName === 'glr:navigate'
       ? root
       : root.document;
     const listener = eventName === 'glr:navigate' ? handleNavigationEvent : scheduleSync;

@@ -986,6 +986,23 @@ test('updates the reference and clears feedback after SPA navigation', async () 
   assert.equal(mergeRequest.announcement.textContent, '');
 });
 
+test('responds to glr:navigate dispatched on window (MAIN-world hook channel)', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/7');
+
+  assert.equal(getBadge(harness.document).label.textContent, 'Issue #7');
+
+  // Simulates src/navigation-hook.js dispatching from the MAIN world onto
+  // window — a DOM event on window never reaches document listeners, so the
+  // content script must register glr:navigate on window (not document).
+  harness.location.href = 'https://gitlab.com/acme/platform/-/merge_requests/9';
+  harness.dispatchWindow('glr:navigate', { detail: { type: 'pushState' } });
+  harness.flushAnimationFrames();
+
+  const mergeRequest = getBadge(harness.document);
+  assert.equal(mergeRequest.label.textContent, 'MR !9');
+  assert.equal(mergeRequest.button.getAttribute('data-copy-text'), '!9');
+});
+
 test('ignores stale copy results after SPA navigation', async () => {
   const pending = deferred();
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/2', {
