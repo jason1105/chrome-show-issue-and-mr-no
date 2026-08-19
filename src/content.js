@@ -98,6 +98,7 @@
     cache: null,
     lastLoadedAt: null,
     requestGeneration: 0,
+    requestControllers: new Set(),
     pending: null,
     query: defaultConfig.searchState?.query || '',
     listFilter: defaultConfig.searchState?.listFilter || defaultConfig.listFilter || 'all',
@@ -230,11 +231,16 @@
       : null;
   }
 
-  async function fetchWithTimeout(url) {
+  async function fetchWithTimeout(url, { signal: externalSignal } = {}) {
     const controller = createAbortSignalSupport();
     let timerId = null;
     const timeoutMs = activeConfig.requestTimeoutMs || 10000;
-    if (controller) {
+    const onExternalAbort = () => controller?.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) controller?.abort();
+      else externalSignal.addEventListener('abort', onExternalAbort);
+    }
+    if (controller && !controller.signal.aborted) {
       timerId = root.setTimeout(() => controller.abort(), timeoutMs);
     }
     try {
@@ -244,14 +250,16 @@
         ...(controller ? { signal: controller.signal } : {}),
       });
     } catch (error) {
+      if (externalSignal?.aborted) throw new DOMException('GitLab API request aborted', 'AbortError');
       if (controller?.signal?.aborted) throw new Error(`GitLab API request timed out after ${timeoutMs}ms`);
       throw error;
     } finally {
       if (timerId !== null) root.clearTimeout(timerId);
+      if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
     }
   }
 
-  async function fetchAllItems(reference, kind, { startPage = 1 } = {}) {
+  async function fetchAllItems(reference, kind, { startPage = 1, signal } = {}) {
     const resource = kind === 'issue' ? 'issues' : 'merge_requests';
     const limit = Math.min(
       activeConfig.maxItemsPerType,
@@ -272,7 +280,7 @@
       if (visitedPages.has(page)) throw new Error('Invalid GitLab pagination');
       visitedPages.add(page);
 
-      const response = await fetchWithTimeout(buildItemsApiUrl(reference, resource, page, perPage));
+      const response = await fetchWithTimeout(buildItemsApiUrl(reference, resource, page, perPage), { signal });
       if (!response?.ok) throw new Error(`GitLab API returned ${response?.status || 'an error'}`);
 
       const body = await response.json();
@@ -359,6 +367,8 @@
   function resetNavigation({ clearCache = true } = {}) {
     clearNavigationTimers();
     navigation.requestGeneration += 1;
+    abortStaleNavigationRequests();
+    navigation.loadingMore = { issues: false, mergeRequests: false };
     navigation.reference = null;
     navigation.projectKey = null;
     navigation.open = false;
@@ -1204,6 +1214,12 @@
     }
   }
 
+  function abortStaleNavigationRequests() {
+    const controllers = Array.from(navigation.requestControllers || []);
+    navigation.requestControllers = new Set();
+    for (const controller of controllers) controller?.abort();
+  }
+
   function isCurrentNavigationRequest(generation, projectKey, host) {
     return !destroyed
       && generation === navigation.requestGeneration
@@ -1250,16 +1266,20 @@
     const hasCompleteSnapshot = isCurrentCache();
     const generation = navigation.requestGeneration + 1;
     navigation.requestGeneration = generation;
+    const requestController = createAbortSignalSupport();
+    if (requestController) navigation.requestControllers.add(requestController);
+    const requestSignal = requestController?.signal || null;
     navigation.loading = true;
     navigation.errors = { issues: false, mergeRequests: false };
     navigation.message = '';
     renderNavigationPanel(host);
 
     const kinds = ['issue', 'merge-request'];
-    const fetchOne = (kind) => fetchAllItems(reference, kind)
+    const fetchOne = (kind) => fetchAllItems(reference, kind, { signal: requestSignal })
       .then((value) => ({ status: 'fulfilled', value }))
       .catch((reason) => ({ status: 'rejected', reason }));
     const pending = (async () => {
+      try {
       const results = [];
       if (activeConfig.loadingMode === 'sequential') {
         for (const kind of kinds) results.push(await fetchOne(kind));
@@ -1320,6 +1340,9 @@
       navigation.loading = false;
       navigation.pending = null;
       renderNavigationPanel(host);
+      } finally {
+        navigation.requestControllers.delete(requestController);
+      }
     })();
     navigation.pending = pending;
     return pending;
@@ -1329,7 +1352,7 @@
     const kindKey = kind === 'issue' ? 'issues' : 'mergeRequests';
     const current = navigation[kindKey];
     const host = root.document.getElementById(HOST_ID);
-    if (!host || !Array.isArray(current) || navigation.loadingMore?.[kindKey]) return;
+    if (!host || !Array.isArray(current) || navigation.loadingMore?.[kindKey] || navigation.loading) return;
     await configurationReady;
     if (destroyed || !navigation.reference) return;
     const generation = navigation.requestGeneration;
@@ -1339,13 +1362,15 @@
       activeConfig.maxItemsPerType,
       activeConfig.protected?.maxItemsPerType || 100,
     );
+    const requestController = createAbortSignalSupport();
+    const requestSignal = requestController?.signal || null;
     navigation.loadingMore = { ...navigation.loadingMore, [kindKey]: true };
     renderNavigationPanel(host);
     try {
       const { items, truncated, nextStartPage } = await fetchAllItems(
         navigation.reference,
         kind,
-        { startPage },
+        { startPage, signal: requestSignal },
       );
       if (!isCurrentNavigationRequest(generation, projectKey, host)) return;
       const merged = mergeLoadedItems(current, items, limit);
@@ -1365,6 +1390,12 @@
       navigation.message = '加载更多失败，请重试';
     } finally {
       navigation.loadingMore = { ...navigation.loadingMore, [kindKey]: false };
+      if (!requestController) return;
+      if (generation === navigation.requestGeneration) {
+        navigation.requestControllers.delete(requestController);
+      } else {
+        requestController.abort();
+      }
       renderNavigationPanel(host);
     }
   }
@@ -1595,7 +1626,7 @@
     return host;
   }
 
-  function sync({ resetCopy = true } = {}) {
+  function sync({ resetCopy = true, forceRender = false } = {}) {
     if (destroyed) return;
 
     if (resetCopy) invalidateCopyOperations();
@@ -1617,22 +1648,36 @@
       resetNavigation();
       navigation.projectKey = projectKey;
     }
+    const referenceChanged = navigation.reference !== reference && (
+      !navigation.reference
+      || navigation.reference.kind !== reference.kind
+      || navigation.reference.number !== reference.number
+      || navigation.reference.projectPath !== reference.projectPath
+      || navigation.reference.origin !== reference.origin
+    );
     navigation.reference = reference;
 
     const host = root.document.getElementById(HOST_ID) || createBadgeHost();
     host.setAttribute('data-touch-drag', activeConfig.touchDrag ? 'true' : 'false');
     const { badge, trigger, label, button } = getBadgeParts(host);
     const copyText = formatCopyText(reference);
-    label.textContent = formatReference(reference);
-    badge.setAttribute('data-kind', reference.kind);
-    trigger.setAttribute(
-      'aria-label',
-      `打开 ${reference.projectPath} 项目的 Open Issue 和 MR 列表`,
-    );
-    button.setAttribute('aria-label', `复制 ${copyText}`);
-    button.setAttribute('data-copy-text', copyText);
-    if (resetCopy) setDefaultFeedback(host, copyText);
-    renderNavigationPanel(host);
+    const currentKind = badge.getAttribute('data-kind');
+    const currentCopyText = button.getAttribute('data-copy-text');
+    const unchanged = !referenceChanged && !forceRender
+      && currentKind === reference.kind
+      && currentCopyText === copyText;
+    if (!unchanged) {
+      label.textContent = formatReference(reference);
+      badge.setAttribute('data-kind', reference.kind);
+      trigger.setAttribute(
+        'aria-label',
+        `打开 ${reference.projectPath} 项目的 Open Issue 和 MR 列表`,
+      );
+      button.setAttribute('aria-label', `复制 ${copyText}`);
+      button.setAttribute('data-copy-text', copyText);
+      if (resetCopy) setDefaultFeedback(host, copyText);
+      renderNavigationPanel(host);
+    }
     applyPosition(host);
   }
 
@@ -1740,6 +1785,7 @@
         const host = root.document.getElementById(HOST_ID);
         if (requestPolicyChanged) {
           navigation.requestGeneration += 1;
+          abortStaleNavigationRequests();
           navigation.pending = null;
           navigation.loading = false;
           navigation.cache = null;
@@ -1754,7 +1800,7 @@
         if (host) {
           host.setAttribute('data-touch-drag', effective.touchDrag ? 'true' : 'false');
           applyPosition(host);
-          if (requestPolicyChanged || navigationDisplayChanged) sync({ resetCopy: false });
+          if (requestPolicyChanged || navigationDisplayChanged) sync({ resetCopy: false, forceRender: true });
           if ((reloadNavigation || requestPolicyChanged) && navigation.open) {
             loadOpenItems({ force: true });
           }
