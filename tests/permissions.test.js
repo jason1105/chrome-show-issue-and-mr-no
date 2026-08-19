@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 
 const {
   CONTENT_SCRIPT_FILES,
+  NAVIGATION_HOOK_FILES,
+  NAVIGATION_HOOK_SCRIPT_ID,
   PENDING_ORIGINS_STORAGE_KEY,
   REGISTERED_SCRIPT_ID,
   buildMatchPatterns,
@@ -76,8 +78,12 @@ test('builds deduplicated match patterns with explicit ports', () => {
   assert.deepEqual(buildMatchPatterns(['nope', '', null]), []);
 });
 
-test('keeps parser → config → content order at document_start', () => {
-  assert.deepEqual(CONTENT_SCRIPT_FILES, ['src/parser.js', 'src/config.js', 'src/content.js']);
+test('keeps parser → config → ui → content order at document_start', () => {
+  assert.deepEqual(CONTENT_SCRIPT_FILES, ['src/parser.js', 'src/config.js', 'src/ui.js', 'src/content.js']);
+});
+
+test('registers the navigation hook in the MAIN world', () => {
+  assert.deepEqual(NAVIGATION_HOOK_FILES, ['src/navigation-hook.js']);
 });
 
 test('requestOrigin grants, registers scripts, and clears pending origin', async () => {
@@ -90,8 +96,12 @@ test('requestOrigin grants, registers scripts, and clears pending origin', async
 
   assert.equal(result.ok, true);
   assert.equal(result.reason, 'granted');
-  assert.equal(state.registrations.length, 1);
-  const [registration] = state.registrations;
+  assert.equal(state.registrations.length, 2);
+  const [hookRegistration, registration] = state.registrations;
+  assert.equal(hookRegistration.id, NAVIGATION_HOOK_SCRIPT_ID);
+  assert.deepEqual(hookRegistration.js, NAVIGATION_HOOK_FILES);
+  assert.equal(hookRegistration.world, 'MAIN');
+  assert.equal(hookRegistration.runAt, 'document_start');
   assert.equal(registration.id, REGISTERED_SCRIPT_ID);
   assert.deepEqual(registration.js, CONTENT_SCRIPT_FILES);
   assert.deepEqual(registration.matches, ['https://gitlab.com/*']);
