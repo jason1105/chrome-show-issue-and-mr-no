@@ -340,6 +340,119 @@ glab mr note create 5 --file src/content.js --line 890 \
 - 无未解决的讨论线程（Critical 和 Warning 级别）
 - 分支可自动合并（`can_be_merged`）
 
+### 10.6 完成声明与可核验产物
+
+所有「已完成」的声明必须附带**可核验产物**，确保工作成果可追溯、可复现。
+
+#### 10.6.1 产物类型
+
+根据工作类型，需提供以下对应产物：
+
+| 工作类型 | 必需产物 | 示例 |
+|---------|---------|------|
+| **代码提交** | commit SHA | `git cat-file -p f8c107e` 可验证 |
+| **测试运行** | 完整测试输出 | `npm test` 的 stdout/stderr 全文 |
+| **Issue/MR 操作** | GitLab Note ID | `#note_746866`（可通过 `glab api` 查证）|
+| **文件生成** | 文件路径 + 校验和 | `tests/fixtures/pre-granted-profile.tar.gz` + `shasum -a 256` |
+| **配置/脚本修改** | 修改前后 diff | `git diff` 输出或完整文件内容 |
+
+#### 10.6.2 纪律要求
+
+**禁止空口声明**：
+
+❌ 错误示例：
+- "测试已通过"（无输出）
+- "已提交代码"（无 SHA）
+- "已在 MR 上评论"（无 Note ID）
+
+✅ 正确示例：
+- "测试已通过，输出见 `#note_746866`，120/120 全绿"
+- "已提交 `f8c107e`，可验证：`git cat-file -p f8c107e`"
+- "已在 MR !9 留痕 `#note_746866`，链接：http://git.tsintergy.com:8070/..."
+
+#### 10.6.3 核验流程
+
+Reviewer/Manager 必须核验产物：
+
+```bash
+# 验证 commit SHA
+git cat-file -p <SHA>
+
+# 验证 GitLab Note
+glab api "/projects/7533/merge_requests/9/notes" | jq '.[] | select(.id == 746866)'
+
+# 验证测试输出（从贴出的 Note/评论中获取）
+# 检查：测试用例数、通过率、关键断言、运行时间
+
+# 验证文件完整性
+shasum -a 256 tests/fixtures/pre-granted-profile.tar.gz
+tar -tzf tests/fixtures/pre-granted-profile.tar.gz | wc -l
+```
+
+**拒绝合并条件**：
+- 声明完成但无产物
+- 产物无法核验（SHA 不存在、Note ID 404、文件缺失）
+- 产物与声明不符（测试输出显示失败但声称通过）
+
+### 10.7 首次授权手工验收要求（Issue #8 专项）
+
+Issue #8（可选权限收窄）采用**方案 1**：每个 MR 需进行一次人工授权验收，确保「首次安装 → 授权」流程正常。
+
+#### 10.7.1 验收范围
+
+- **触发时机**：Issue #8 相关 MR 合并前
+- **验收目标**：验证扩展首次安装后，用户可通过选项页成功授予 `http://127.0.0.1:8080/*` 和 `http://git.tsintergy.com:8070/*` 权限，且授权后功能正常
+- **预期耗时**：约 30 秒
+
+#### 10.7.2 验收步骤
+
+1. **清理环境**：
+   ```bash
+   # 确保无残留 Chrome 进程
+   pkill -9 -f chrome-for-testing
+   
+   # 清理扩展授权状态（可选，确保干净环境）
+   rm -rf /tmp/chrome-test-profile-*
+   ```
+
+2. **安装扩展**（首次安装场景）：
+   - 方式 A：通过 `chrome://extensions` 手动加载 `src/` 目录
+   - 方式 B：运行 `npm run test:browser`，在测试启动后、授权前暂停
+
+3. **打开选项页**：
+   - 点击扩展图标 → "选项" / "Options"
+   - 或直接访问 `chrome-extension://<扩展ID>/src/options.html`
+
+4. **授予权限**：
+   - 在选项页的「Origin」输入框中输入 `http://127.0.0.1:8080`
+   - 点击「授权实例」按钮
+   - 浏览器弹出原生权限气泡（"Allow this site to read and change site information?"）
+   - **人工点击「Allow」**
+   - 确认选项页显示 `已授权 http://127.0.0.1:8080` 状态文本（options.js:170）
+   - 重复上述步骤授权 `http://git.tsintergy.com:8070`
+
+5. **验证功能**：
+   - 打开 `http://127.0.0.1:8080`（或任意 GitLab Issue/MR 页面）
+   - 确认页面上 Issue/MR 编号正常显示（扩展 content scripts 已注入）
+   - 打开 DevTools Console，确认无权限相关错误
+
+6. **记录产物**：
+   - 截图选项页授权成功状态（必需）
+   - 截图目标页面功能正常（必需）
+   - 贴出验收时的 commit SHA（必需）
+
+#### 10.7.3 验收纪律
+
+- **每个 Issue #8 相关 MR 合并前必须完成一次首次授权验收**
+- 验收产物（截图 + SHA）必须在 MR 评论区留痕（参考 §10.6）
+- 若验收失败（授权气泡未弹出、授权后功能异常），MR 不得合并，需修复后重新验收
+
+#### 10.7.4 技术边界说明
+
+- **自动化不覆盖首次授权路径**：Chrome 原生权限气泡无法通过 CDP、Playwright、WebDriver 等自动化工具可靠触发点击（安全限制）
+- **预置权限方案（方案 2）已放弃**：Chrome `Secure Preferences` HMAC 完整性校验机制阻断运行时预置权限注入，且扩展 ID 由绝对路径派生、不可移植
+- **现状可接受**：人工验收耗时约 30 秒，成本低于绕行技术障碍的投入
+
 ## 11. 附录：常用命令
 
 ```bash
