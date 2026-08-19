@@ -295,6 +295,7 @@ function jsonResponse(body, options = {}) {
 
 function createHarness(initialUrl, options = {}) {
   const configSource = fs.readFileSync(path.join(__dirname, '../src/config.js'), 'utf8');
+  const uiSource = fs.readFileSync(path.join(__dirname, '../src/ui.js'), 'utf8');
   const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
   const windowEvents = new FakeEventTarget();
   const location = { href: initialUrl };
@@ -461,6 +462,7 @@ function createHarness(initialUrl, options = {}) {
   };
 
   vm.runInNewContext(configSource, context, { filename: 'src/config.js' });
+  vm.runInNewContext(uiSource, context, { filename: 'src/ui.js' });
   vm.runInNewContext(source, context, { filename: 'src/content.js' });
 
   return {

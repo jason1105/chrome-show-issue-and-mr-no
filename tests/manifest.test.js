@@ -18,7 +18,7 @@ test('injects parser, configuration, and badge scripts on HTTP and HTTPS pages',
 
   const [contentScript] = manifest.content_scripts;
   assert.deepEqual(contentScript.matches, ['http://*/*', 'https://*/*']);
-  assert.deepEqual(contentScript.js, ['src/parser.js', 'src/config.js', 'src/content.js']);
+  assert.deepEqual(contentScript.js, ['src/parser.js', 'src/config.js', 'src/ui.js', 'src/content.js']);
   assert.equal(contentScript.run_at, 'document_start');
 
   for (const scriptPath of contentScript.js) {

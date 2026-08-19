@@ -25,6 +25,7 @@
       "js": [
         "src/parser.js",
         "src/config.js",
+        "src/ui.js",
         "src/content.js"
       ],
       "run_at": "document_start"
