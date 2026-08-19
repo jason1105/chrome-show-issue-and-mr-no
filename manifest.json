@@ -23,12 +23,24 @@
         "https://*/*"
       ],
       "js": [
+        "src/navigation-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
         "src/parser.js",
         "src/config.js",
         "src/ui.js",
         "src/content.js"
       ],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "world": "ISOLATED"
     }
   ]
 }

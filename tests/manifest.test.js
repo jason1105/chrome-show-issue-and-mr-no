@@ -14,14 +14,20 @@ test('declares a loadable Manifest V3 extension', () => {
 });
 
 test('injects parser, configuration, and badge scripts on HTTP and HTTPS pages', () => {
-  assert.equal(manifest.content_scripts.length, 1);
+  assert.equal(manifest.content_scripts.length, 2);
 
-  const [contentScript] = manifest.content_scripts;
+  const [mainWorldScript, contentScript] = manifest.content_scripts;
+  assert.deepEqual(mainWorldScript.matches, ['http://*/*', 'https://*/*']);
+  assert.deepEqual(mainWorldScript.js, ['src/navigation-hook.js']);
+  assert.equal(mainWorldScript.run_at, 'document_start');
+  assert.equal(mainWorldScript.world, 'MAIN');
+
   assert.deepEqual(contentScript.matches, ['http://*/*', 'https://*/*']);
   assert.deepEqual(contentScript.js, ['src/parser.js', 'src/config.js', 'src/ui.js', 'src/content.js']);
   assert.equal(contentScript.run_at, 'document_start');
+  assert.equal(contentScript.world, 'ISOLATED');
 
-  for (const scriptPath of contentScript.js) {
+  for (const scriptPath of [...mainWorldScript.js, ...contentScript.js]) {
     assert.equal(fs.statSync(path.join(projectRoot, scriptPath)).isFile(), true);
   }
 });
