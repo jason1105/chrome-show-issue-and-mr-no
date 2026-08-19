@@ -2332,3 +2332,142 @@ test('discards a late load-more response after a refresh supersedes it', async (
   assert.doesNotMatch(renderedText(getBadge(harness.document).panel), /Stale issue 51/);
   assert.match(renderedText(getBadge(harness.document).panel), /Fresh issue/);
 });
+
+// ---------------------------------------------------------------------------
+// #6 step 1: render-safety regression coverage
+// ---------------------------------------------------------------------------
+
+// 1) resetNavigation aborts in-flight stale requests instead of letting slow
+//    responses race a newer navigation.
+test('aborts stale in-flight requests when navigating to another project', async () => {
+  const oldIssues = deferred();
+  const oldMergeRequests = deferred();
+  const harness = createHarness('https://gitlab.com/acme/old-app/-/issues/1', {
+    fetchResults: [oldIssues, oldMergeRequests],
+  });
+
+  const rendered = getBadge(harness.document);
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  assert.equal(harness.fetchCalls.length, 2);
+
+  harness.location.href = 'https://gitlab.com/acme/new-app/-/issues/7';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  await harness.flushMicrotasks();
+
+  // Navigating away aborts the stale request controllers; the fetch wrapper
+  // rejects aborted calls, so the stale responses never land.
+  assert.equal(
+    harness.fetchCalls[0].init?.signal?.aborted,
+    true,
+    'stale issue request should be aborted after project navigation',
+  );
+  assert.equal(
+    harness.fetchCalls[1].init?.signal?.aborted,
+    true,
+    'stale merge request should be aborted after project navigation',
+  );
+});
+
+// 2) load-more clicks while a full (re)load is running are ignored.
+test('ignores load-more clicks while a full reload is in flight', async () => {
+  const issues = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [issues, jsonResponse([])],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 50 },
+      },
+    },
+  });
+
+  const rendered = getBadge(harness.document);
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  assert.equal(harness.fetchCalls.length, 2);
+
+  // While the initial load is still pending, fire refresh (full reload, but
+  // deduped) and a load-more click captured from the loading-state panel.
+  rendered.refresh.dispatchEvent({ type: 'click' });
+  harness.context.GitLabOpenItems?.loadMore?.('issue');
+
+  issues.resolve(jsonResponse([
+    { iid: 1, title: 'Issue 1' },
+    { iid: 2, title: 'Issue 2' },
+  ]));
+  await harness.flushMicrotasks();
+  await harness.flushMicrotasks();
+
+  // Only the initial issue + MR fetches happened: no extra load-more fetch.
+  assert.equal(harness.fetchCalls.length, 2);
+  const updated = getBadge(harness.document);
+  assert.match(updated.refresh.getAttribute('aria-busy') || 'false', /false/);
+});
+
+// 3) repeated sync() with the same reference must not re-render the panel.
+test('second sync on the same reference does not re-render the panel', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [
+      jsonResponse([{ iid: 1, title: 'Issue 1' }]),
+      jsonResponse([]),
+    ],
+  });
+
+  const rendered = await openAndLoad(harness);
+  const results = rendered.panel.querySelector('[data-open-items-results]');
+  const firstGroup = results.querySelector('[data-open-items-group]');
+  assert.ok(firstGroup, 'initial render should produce a results group');
+
+  // A resize event triggers scheduleSync -> sync() with an unchanged URL.
+  harness.dispatchWindow('resize');
+  harness.flushAnimationFrames();
+  await harness.flushMicrotasks();
+
+  const afterResize = getBadge(harness.document);
+  const resultsAfter = afterResize.panel.querySelector('[data-open-items-results]');
+  assert.equal(
+    resultsAfter.querySelector('[data-open-items-group]'),
+    firstGroup,
+    'unchanged reference must keep the existing DOM nodes instead of re-rendering',
+  );
+});
+
+// 4) a slow response landing after a newer request must not clobber the fresh
+//    list even when it was not aborted (generation guard).
+test('slow out-of-order response does not overwrite the newer list', async () => {
+  const oldIssues = deferred();
+  const oldMergeRequests = deferred();
+  const harness = createHarness('https://gitlab.com/acme/old-app/-/issues/1', {
+    fetchResults: [
+      oldIssues,
+      oldMergeRequests,
+      jsonResponse([{ iid: 7, title: 'Fresh issue' }]),
+      jsonResponse([{ iid: 8, title: 'Fresh MR' }]),
+    ],
+  });
+
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  assert.equal(harness.fetchCalls.length, 2);
+
+  // Navigate to another project: stale controllers are aborted, but resolve
+  // the old promises anyway to prove the generation guard also holds.
+  harness.location.href = 'https://gitlab.com/acme/new-app/-/issues/7';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  assert.equal(harness.fetchCalls.length, 4);
+
+  oldIssues.resolve(jsonResponse([{ iid: 1, title: 'Stale issue' }]));
+  oldMergeRequests.resolve(jsonResponse([{ iid: 2, title: 'Stale MR' }]));
+  await harness.flushMicrotasks();
+  await harness.flushMicrotasks();
+
+  const text = renderedText(getBadge(harness.document).panel);
+  assert.match(text, /Fresh issue/);
+  assert.match(text, /Fresh MR/);
+  assert.doesNotMatch(text, /Stale issue|Stale MR/);
+});
