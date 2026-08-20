@@ -3,9 +3,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-// background.js is an IIFE that wires chrome.runtime listeners against a
-// root object. Load it in a fresh VM context with a chrome stub so we can
-// assert the #14 onStartup re-sync wiring.
+// background.js is an IIFE that wires chrome.runtime listeners and a top-level
+// cold-boot self-heal against a root object. Load it in a fresh VM context with
+// a chrome stub so we can assert the #15 path D wiring.
 
 function loadBackground(chromeStub) {
   const root = { chrome: chromeStub.chrome, GitLabReferencePermissions: chromeStub.permissionsModule };
@@ -17,7 +17,7 @@ function loadBackground(chromeStub) {
   return root;
 }
 
-function createChromeStub({ syncCalls = [] } = {}) {
+function createChromeStub({ syncCalls = [], registeredScripts = [] } = {}) {
   const listeners = {};
   const permissionsModule = {
     syncRegisteredScripts: async () => {
@@ -37,6 +37,9 @@ function createChromeStub({ syncCalls = [] } = {}) {
         onInstalled: { addListener: (fn) => { listeners.onInstalled = fn; } },
         onStartup: { addListener: (fn) => { listeners.onStartup = fn; } },
       },
+      scripting: {
+        getRegisteredContentScripts: async () => registeredScripts,
+      },
       permissions: { onRemoved: { addListener: (fn) => { listeners.onRemoved = fn; } } },
       storage: { local: { get: async () => ({}) } },
     },
@@ -44,30 +47,46 @@ function createChromeStub({ syncCalls = [] } = {}) {
   };
 }
 
-test('#14 background registers an onStartup listener that re-syncs scripts', async () => {
+test('#15 path D: cold boot with no registered scripts re-syncs', async () => {
+  const syncCalls = [];
+  const stub = createChromeStub({ syncCalls, registeredScripts: [] });
+  loadBackground(stub);
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(syncCalls, ['syncRegisteredScripts'],
+    'cold boot with empty registrations should call permissions.syncRegisteredScripts');
+});
+
+test('#15 path D: cold boot with existing registrations skips re-sync', async () => {
+  const syncCalls = [];
+  const stub = createChromeStub({
+    syncCalls,
+    registeredScripts: [{ id: 'gitlab-reference-main' }],
+  });
+  loadBackground(stub);
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(syncCalls, [],
+    'cold boot with non-empty registrations should not re-sync (idempotent skip)');
+});
+
+test('#15 path D: no onStartup listener is registered', async () => {
   const stub = createChromeStub();
   loadBackground(stub);
 
-  assert.equal(typeof stub.listeners.onStartup, 'function',
-    'background should register chrome.runtime.onStartup listener');
+  await new Promise((resolve) => setImmediate(resolve));
 
-  await stub.listeners.onStartup();
-});
-
-test('#14 onStartup triggers syncRegisteredScripts (#14 bootstrap fallback)', async () => {
-  const syncCalls = [];
-  const stub = createChromeStub({ syncCalls });
-  loadBackground(stub);
-
-  await stub.listeners.onStartup();
-
-  assert.deepEqual(syncCalls, ['syncRegisteredScripts'],
-    'onStartup should call permissions.syncRegisteredScripts to restore registrations');
+  assert.equal(stub.listeners.onStartup, undefined,
+    'onStartup listener should be removed under path D');
 });
 
 test('background still wires onInstalled and onRemoved listeners', async () => {
   const stub = createChromeStub();
   loadBackground(stub);
+
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(typeof stub.listeners.onInstalled, 'function');
   assert.equal(typeof stub.listeners.onRemoved, 'function');
