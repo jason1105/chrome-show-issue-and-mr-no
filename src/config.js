@@ -7,7 +7,7 @@
 })(typeof globalThis === 'undefined' ? this : globalThis, () => {
   'use strict';
 
-  const CONFIG_VERSION = 2;
+  const CONFIG_VERSION = 3;
   const CONFIG_STORAGE_KEY = 'gitlabReferenceConfig';
   const LEGACY_POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
   const DEFAULT_POSITION = Object.freeze({ edge: 'top', ratio: 0.5 });
@@ -23,6 +23,7 @@
     showLastRefresh: true,
     touchDrag: true,
     keyboardStep: 8,
+    showOnAllRepoPages: false,
   });
   const PROTECTED_CONFIG = Object.freeze({
     allowRemoteConfig: false,
@@ -62,6 +63,26 @@
         user,
         userOverrides,
         searchState: { ...DEFAULT_SEARCH_STATE },
+      };
+    },
+    2(input) {
+      const user = input.user && typeof input.user === 'object' ? { ...input.user } : {};
+      const userOverrides = input.userOverrides && typeof input.userOverrides === 'object'
+        ? { ...input.userOverrides }
+        : Object.fromEntries(Object.keys(DEFAULT_USER)
+          .filter((name) => Object.prototype.hasOwnProperty.call(user, name))
+          .map((name) => [name, true]));
+      // New in v3: full-repo display mode. Older configs must keep the
+      // historical behavior (detail pages only), so the default is false and
+      // never promoted to a user override.
+      user.showOnAllRepoPages = typeof user.showOnAllRepoPages === 'boolean'
+        ? user.showOnAllRepoPages
+        : false;
+      return {
+        ...input,
+        version: 3,
+        user,
+        userOverrides,
       };
     },
   });
@@ -121,7 +142,8 @@
     if (name === 'maxItemsPerBatch') return normalizeInteger(value, fallback, 1, PROTECTED_CONFIG.maxItemsPerPage);
     if (name === 'requestTimeoutMs') return normalizeInteger(value, fallback, 1000, 60000);
     if (name === 'keyboardStep') return normalizeInteger(value, fallback, 1, 50);
-    if (name === 'rememberSearch' || name === 'showLastRefresh' || name === 'touchDrag') {
+    if (name === 'rememberSearch' || name === 'showLastRefresh' || name === 'touchDrag'
+      || name === 'showOnAllRepoPages') {
       return typeof value === 'boolean' ? value : fallback;
     }
     return fallback;

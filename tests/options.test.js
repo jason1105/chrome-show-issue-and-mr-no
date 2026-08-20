@@ -42,6 +42,7 @@ function createOptionsDocument() {
     'show-last-refresh': new Field(),
     'touch-drag': new Field(),
     'keyboard-step': new Field(),
+    'show-all-repo-pages': new Field(),
     status: new Field(),
     'settings-form': new Field(),
     'reset-settings': new Field(),
@@ -81,6 +82,7 @@ test('builds a validated user patch from option controls', () => {
     showLastRefresh: { checked: false },
     touchDrag: { checked: true },
     keyboardStep: { value: '12' },
+    showOnAllRepoPages: { checked: true },
   });
 
   assert.deepEqual(patch, {
@@ -92,6 +94,7 @@ test('builds a validated user patch from option controls', () => {
     showLastRefresh: false,
     touchDrag: true,
     keyboardStep: 12,
+    showOnAllRepoPages: true,
   });
 });
 
@@ -105,6 +108,7 @@ test('omits empty numeric controls so saving does not silently clamp them', () =
     showLastRefresh: { checked: true },
     touchDrag: { checked: true },
     keyboardStep: { value: 'not-a-number' },
+    showOnAllRepoPages: { checked: false },
   });
 
   assert.deepEqual(patch, {
@@ -113,6 +117,7 @@ test('omits empty numeric controls so saving does not silently clamp them', () =
     loadingMode: 'parallel',
     showLastRefresh: true,
     touchDrag: true,
+    showOnAllRepoPages: false,
   });
 });
 
