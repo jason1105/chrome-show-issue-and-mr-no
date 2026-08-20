@@ -1146,6 +1146,77 @@ test('loads Open items with encoded project API URLs, pagination, and current se
   );
 });
 
+test('loads all-state items when itemStateFilter is all, with closed visual distinction', async () => {
+  const harness = createHarness(
+    'https://git.example.test/group/app/-/issues/15',
+    {
+      storageData: {
+        [CONFIG_STORAGE_KEY]: {
+          version: 4,
+          user: { itemStateFilter: 'all' },
+          userOverrides: { itemStateFilter: true },
+        },
+      },
+      fetchResults: [
+        jsonResponse([
+          { iid: 15, title: 'Current issue', state: 'opened' },
+          { iid: 14, title: 'Closed issue', state: 'closed' },
+        ]),
+        jsonResponse([
+          { iid: 8, title: 'Merged MR', state: 'merged' },
+        ]),
+      ],
+    },
+  );
+
+  const rendered = await openAndLoad(harness);
+
+  assert.deepEqual(
+    harness.fetchCalls.map(({ url }) => url),
+    [
+      'https://git.example.test/api/v4/projects/group%2Fapp/issues'
+        + '?state=all&scope=all&order_by=updated_at&sort=desc&per_page=100&page=1',
+      'https://git.example.test/api/v4/projects/group%2Fapp/merge_requests'
+        + '?state=all&scope=all&order_by=updated_at&sort=desc&per_page=100&page=1',
+    ],
+  );
+
+  const closed = rendered.panel.querySelector('[data-iid="14"]');
+  assert.equal(closed.getAttribute('data-item-state'), 'closed');
+  const merged = rendered.panel.querySelector('[data-iid="8"]');
+  assert.equal(merged.getAttribute('data-item-state'), 'merged');
+  const currentRows = rendered.panel.querySelectorAll('[data-current-open-item]');
+  assert.equal(currentRows.length, 1);
+  assert.equal(currentRows[0].getAttribute('data-iid'), '15');
+  assert.equal(currentRows[0].getAttribute('data-item-state'), null);
+});
+
+test('keeps state=opened by default and adjusts empty-state copy in all mode', async () => {
+  const openHarness = createHarness('https://git.example.test/group/app/-/issues/15', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const openRendered = await openAndLoad(openHarness);
+  assert.match(openHarness.fetchCalls[0].url, /state=opened/);
+  assert.match(renderedText(openRendered.panel), /暂无 Open items/);
+
+  const allHarness = createHarness('https://git.example.test/group/app/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 4,
+        user: { itemStateFilter: 'all' },
+        userOverrides: { itemStateFilter: true },
+      },
+    },
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const allRendered = await openAndLoad(allHarness);
+  const allText = renderedText(allRendered.panel);
+  assert.match(allHarness.fetchCalls[0].url, /state=all/);
+  assert.match(allText, /暂无 Issue/);
+  assert.match(allText, /暂无 MR/);
+  assert.doesNotMatch(allText, /暂无 Open/);
+});
+
 test('renders an accessible local search field and type filters', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [jsonResponse([]), jsonResponse([])],

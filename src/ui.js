@@ -429,6 +429,15 @@
         color: #7d4e9e;
       }
 
+      [data-open-item][data-item-state] [data-open-item-title] {
+        color: #6e7781;
+        text-decoration: line-through;
+      }
+
+      [data-open-item][data-item-state] [data-open-item-iid] {
+        opacity: 0.65;
+      }
+
       [data-open-item-title] {
         min-width: 0;
         overflow: hidden;

@@ -33,6 +33,7 @@ class Field {
 function createOptionsDocument() {
   const fields = {
     'list-filter': new Field(),
+    'item-state-filter': new Field(),
     'remember-search': new Field(),
     'cache-ttl': new Field(),
     'max-items': new Field(),
@@ -75,6 +76,7 @@ function createStorage(initial = {}) {
 test('builds a validated user patch from option controls', () => {
   const patch = buildUserPatch({
     listFilter: { value: 'issue' },
+    itemStateFilter: { value: 'all' },
     rememberSearch: { checked: true },
     cacheTtlSeconds: { value: '120' },
     maxItemsPerType: { value: '20' },
@@ -87,6 +89,7 @@ test('builds a validated user patch from option controls', () => {
 
   assert.deepEqual(patch, {
     listFilter: 'issue',
+    itemStateFilter: 'all',
     rememberSearch: true,
     cacheTtlSeconds: 120,
     maxItemsPerType: 20,
@@ -101,6 +104,7 @@ test('builds a validated user patch from option controls', () => {
 test('omits empty numeric controls so saving does not silently clamp them', () => {
   const patch = buildUserPatch({
     listFilter: { value: 'issue' },
+    itemStateFilter: { value: 'open' },
     rememberSearch: { checked: false },
     cacheTtlSeconds: { value: '' },
     maxItemsPerType: { value: '   ' },
@@ -113,6 +117,7 @@ test('omits empty numeric controls so saving does not silently clamp them', () =
 
   assert.deepEqual(patch, {
     listFilter: 'issue',
+    itemStateFilter: 'open',
     rememberSearch: false,
     loadingMode: 'parallel',
     showLastRefresh: true,
