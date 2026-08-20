@@ -20,6 +20,7 @@
     'gl:page:load',
   ];
   const parseGitLabReference = root.GitLabReferenceParser?.parseGitLabReference;
+  const parseGitLabProjectPage = root.GitLabReferenceParser?.parseGitLabProjectPage;
   const configApi = root.GitLabReferenceConfig;
   const uiApi = root.GitLabReferenceUi;
   const DEFAULT_POSITION = configApi?.DEFAULT_POSITION || { edge: 'top', ratio: 0.5 };
@@ -48,6 +49,7 @@
   if (
     typeof parseGitLabReference !== 'function'
     || typeof configApi?.createConfigStore !== 'function'
+    || typeof parseGitLabProjectPage !== 'function'
   ) {
     return;
   }
@@ -108,12 +110,14 @@
   };
 
   function formatReference(reference) {
+    if (!reference.kind) return reference.projectPath;
     return reference.kind === 'issue'
       ? `Issue #${reference.iid}`
       : `MR !${reference.iid}`;
   }
 
   function formatCopyText(reference) {
+    if (!reference.kind) return '';
     return reference.kind === 'issue'
       ? `#${reference.iid}`
       : `!${reference.iid}`;
@@ -879,6 +883,7 @@
     if (destroyed || !host) return;
 
     const text = button.getAttribute('data-copy-text');
+    if (!text) return; // project-mode badge has nothing to copy
     const generation = copyGeneration + 1;
     copyGeneration = generation;
     clearFeedbackTimer();
@@ -1632,7 +1637,21 @@
 
     if (resetCopy) invalidateCopyOperations();
     lastUrl = root.location.href;
-    const reference = parseGitLabReference(lastUrl);
+    let reference = parseGitLabReference(lastUrl);
+    if (!reference && activeConfig.showOnAllRepoPages) {
+      // Full-repo mode: fall back to project-level coordinates so the badge
+      // (with open issue/MR counts) shows on every repository page.
+      const project = parseGitLabProjectPage(lastUrl);
+      if (project) {
+        reference = {
+          origin: project.origin,
+          projectPath: project.projectPath,
+          kind: null,
+          iid: null,
+          projectOnly: true,
+        };
+      }
+    }
     if (!reference) {
       resetNavigation();
       removeBadge();
@@ -1655,6 +1674,7 @@
       || navigation.reference.number !== reference.number
       || navigation.reference.projectPath !== reference.projectPath
       || navigation.reference.origin !== reference.origin
+      || Boolean(navigation.reference.projectOnly) !== Boolean(reference.projectOnly)
     );
     navigation.reference = reference;
 
@@ -1665,17 +1685,23 @@
     const currentKind = badge.getAttribute('data-kind');
     const currentCopyText = button.getAttribute('data-copy-text');
     const unchanged = !referenceChanged && !forceRender
-      && currentKind === reference.kind
+      && currentKind === String(reference.kind)
       && currentCopyText === copyText;
     if (!unchanged) {
       label.textContent = formatReference(reference);
-      badge.setAttribute('data-kind', reference.kind);
+      if (reference.kind) badge.setAttribute('data-kind', reference.kind);
+      else badge.removeAttribute('data-kind');
       trigger.setAttribute(
         'aria-label',
         `打开 ${reference.projectPath} 项目的 Open Issue 和 MR 列表`,
       );
-      button.setAttribute('aria-label', `复制 ${copyText}`);
-      button.setAttribute('data-copy-text', copyText);
+      if (copyText) {
+        button.setAttribute('aria-label', `复制 ${copyText}`);
+        button.setAttribute('data-copy-text', copyText);
+      } else {
+        button.removeAttribute('aria-label');
+        button.removeAttribute('data-copy-text');
+      }
       if (resetCopy) setDefaultFeedback(host, copyText);
       renderNavigationPanel(host);
     }
@@ -1779,7 +1805,8 @@
           navigation.listFilter = nextListFilter;
         }
         const navigationDisplayChanged = searchDisplayChanged
-          || previous.showLastRefresh !== effective.showLastRefresh;
+          || previous.showLastRefresh !== effective.showLastRefresh
+          || previous.showOnAllRepoPages !== effective.showOnAllRepoPages;
         const nextPosition = configApi.normalizePosition(effective.position);
         const preserveLocalPosition = Boolean(drag || pendingPositionSave);
         if (!preserveLocalPosition) persistedPosition = { ...nextPosition };
@@ -1806,10 +1833,12 @@
         if (host) {
           host.setAttribute('data-touch-drag', effective.touchDrag ? 'true' : 'false');
           applyPosition(host);
-          if (requestPolicyChanged || navigationDisplayChanged) sync({ resetCopy: false, forceRender: true });
-          if ((reloadNavigation || requestPolicyChanged) && navigation.open) {
-            loadOpenItems({ force: true });
-          }
+        }
+        // sync() re-creates the host when the new mode shows a badge where
+        // none existed (full-repo display mode toggled on).
+        if (requestPolicyChanged || navigationDisplayChanged) sync({ resetCopy: false, forceRender: true });
+        if (host && (reloadNavigation || requestPolicyChanged) && navigation.open) {
+          loadOpenItems({ force: true });
         }
       })
       .catch(() => {

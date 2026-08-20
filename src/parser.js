@@ -70,5 +70,57 @@
     };
   }
 
-  return { parseGitLabReference };
+  // Reserved top-level GitLab routes that can never be a project namespace.
+  const RESERVED_ROOT_SEGMENTS = new Set([
+    '-',
+    'api',
+    'users',
+    'groups',
+    'dashboard',
+    'admin',
+    'explore',
+    'projects',
+    'profile',
+    'search',
+    'settings',
+    'help',
+    'public',
+  ]);
+
+  // Recognizes any GitLab project page URL (repository tree, CI/CD, wiki, ...)
+  // and returns the project coordinates. Deliberately decoupled from
+  // parseGitLabReference: it only needs the "group/project" prefix, which is
+  // always the first two path segments.
+  function parseGitLabProjectPage(urlLike) {
+    let url;
+
+    try {
+      url = new URL(urlLike);
+    } catch {
+      return null;
+    }
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (segments.length < 2) return null;
+
+    if (RESERVED_ROOT_SEGMENTS.has(segments[0])) return null;
+
+    let projectSegments;
+    try {
+      projectSegments = segments.slice(0, 2).map(decodeURIComponent);
+    } catch {
+      return null;
+    }
+
+    return {
+      origin: url.origin,
+      projectPath: projectSegments.join('/'),
+    };
+  }
+
+  return { parseGitLabReference, parseGitLabProjectPage };
 });

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseGitLabReference } = require('../src/parser.js');
+const { parseGitLabReference, parseGitLabProjectPage } = require('../src/parser.js');
 
 test('parses a modern GitLab.com issue URL', () => {
   assert.deepEqual(
@@ -127,5 +127,46 @@ test('rejects list, create, edit, malformed, and non-HTTP URLs', () => {
 
   for (const url of invalidUrls) {
     assert.equal(parseGitLabReference(url), null, url);
+  }
+});
+
+test('parseGitLabProjectPage recognizes repository pages by group/project prefix', () => {
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/acme/platform'),
+    { origin: 'https://gitlab.com', projectPath: 'acme/platform' },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('https://git.example.test/acme/platform/-/tree/main/src?ref=main#L12'),
+    { origin: 'https://git.example.test', projectPath: 'acme/platform' },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('http://git.internal:8080/acme/platform/-/pipelines'),
+    { origin: 'http://git.internal:8080', projectPath: 'acme/platform' },
+  );
+  // Deeply nested groups still resolve to the first two segments.
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/acme/subgroup/platform/-/wikis/home'),
+    { origin: 'https://gitlab.com', projectPath: 'acme/subgroup' },
+  );
+});
+
+test('parseGitLabProjectPage rejects non-project and malformed URLs', () => {
+  const invalidUrls = [
+    'https://gitlab.com/acme', // namespace root, not a project
+    'https://gitlab.com/', // instance root
+    'https://gitlab.com/dashboard/projects',
+    'https://gitlab.com/api/v4/projects',
+    'https://gitlab.com/users/sign_in',
+    'https://gitlab.com/groups/acme',
+    'https://gitlab.com/explore/projects',
+    'https://gitlab.com/admin',
+    'https://gitlab.com/public/acme',
+    'https://git.example.test/platform/%E0%A4%A/repository',
+    'ftp://gitlab.com/acme/platform',
+    'not a URL',
+  ];
+
+  for (const url of invalidUrls) {
+    assert.equal(parseGitLabProjectPage(url), null, url);
   }
 });

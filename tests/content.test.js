@@ -2488,3 +2488,123 @@ test('slow out-of-order response does not overwrite the newer list', async () =>
   assert.match(text, /Fresh MR/);
   assert.doesNotMatch(text, /Stale issue|Stale MR/);
 });
+
+test('full-repo mode shows a project badge on non-detail pages with open item counts', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/tree/main/src', {
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 3,
+        user: { showOnAllRepoPages: true },
+      },
+    },
+    fetchResults: [
+      jsonResponse([{ iid: 11, title: 'Open issue A' }]),
+      jsonResponse([{ iid: 22, title: 'Open MR B' }]),
+    ],
+  });
+  await harness.flushMicrotasks();
+
+  const rendered = getBadge(harness.document);
+  assert.notEqual(rendered.host, null);
+  assert.equal(renderedText(rendered.label), 'acme/platform');
+  assert.ok(!rendered.button.getAttribute('data-copy-text'));
+
+  const panel = await openAndLoad(harness);
+  assert.match(renderedText(panel.panel), /Open issue A/);
+  assert.match(renderedText(panel.panel), /Open MR B/);
+  const urls = harness.fetchCalls.map((call) => call.url);
+  assert.ok(urls.some((url) => url.startsWith('https://gitlab.com/api/v4/projects/acme%2Fplatform/issues')));
+  assert.ok(urls.some((url) => url.includes('/merge_requests')));
+});
+
+test('full-repo mode keeps the badge hidden by default on non-detail pages', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/tree/main/src');
+  await harness.flushMicrotasks();
+
+  assert.equal(getBadge(harness.document).host, null);
+});
+
+test('full-repo mode stays off for migrated version 2 configs', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/pipelines', {
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { requestTimeoutMs: 8000 },
+      },
+    },
+  });
+  await harness.flushMicrotasks();
+
+  assert.equal(getBadge(harness.document).host, null);
+});
+
+test('full-repo mode does not show the badge on non-project GitLab routes', async () => {
+  const harness = createHarness('https://gitlab.com/dashboard/projects', {
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 3,
+        user: { showOnAllRepoPages: true },
+      },
+    },
+  });
+  await harness.flushMicrotasks();
+
+  assert.equal(getBadge(harness.document).host, null);
+});
+
+test('toggling full-repo mode via storage changes updates the badge', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/blob/main/README.md');
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).host, null);
+
+  const baseConfig = {
+    version: 3,
+    user: { showOnAllRepoPages: false },
+  };
+  await harness.dispatchStorageChanged({
+    [CONFIG_STORAGE_KEY]: {
+      oldValue: baseConfig,
+      newValue: { ...baseConfig, user: { ...baseConfig.user, showOnAllRepoPages: true } },
+    },
+  });
+  await harness.flushMicrotasks();
+  await harness.flushMicrotasks();
+
+  const rendered = getBadge(harness.document);
+  assert.notEqual(rendered.host, null);
+  assert.equal(renderedText(rendered.label), 'acme/platform');
+});
+
+test('full-repo mode transitions between project and detail pages within one project', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/tree/main', {
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 3,
+        user: { showOnAllRepoPages: true },
+      },
+    },
+    fetchResults: [
+      jsonResponse([]),
+      jsonResponse([]),
+    ],
+  });
+  await harness.flushMicrotasks();
+  assert.equal(renderedText(getBadge(harness.document).label), 'acme/platform');
+
+  harness.location.href = 'https://gitlab.com/acme/platform/-/issues/7';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  await harness.flushMicrotasks();
+
+  const detail = getBadge(harness.document);
+  assert.equal(renderedText(detail.label), 'Issue #7');
+  assert.equal(detail.button.getAttribute('data-copy-text'), '#7');
+
+  harness.location.href = 'https://gitlab.com/acme/platform/-/pipelines';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  await harness.flushMicrotasks();
+
+  assert.equal(renderedText(getBadge(harness.document).label), 'acme/platform');
+  assert.ok(!getBadge(harness.document).button.getAttribute('data-copy-text'));
+});

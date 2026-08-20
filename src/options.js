@@ -34,6 +34,7 @@
     showLastRefresh: 'show-last-refresh',
     touchDrag: 'touch-drag',
     keyboardStep: 'keyboard-step',
+    showOnAllRepoPages: 'show-all-repo-pages',
   };
 
   function buildUserPatch(fields) {
@@ -43,6 +44,7 @@
       loadingMode: fields.loadingMode.value,
       showLastRefresh: Boolean(fields.showLastRefresh.checked),
       touchDrag: Boolean(fields.touchDrag.checked),
+      showOnAllRepoPages: Boolean(fields.showOnAllRepoPages.checked),
     };
     for (const [name, field] of [
       ['cacheTtlSeconds', fields.cacheTtlSeconds],
@@ -75,6 +77,7 @@
     fields.loadingMode.value = effective.loadingMode;
     fields.showLastRefresh.checked = effective.showLastRefresh;
     fields.touchDrag.checked = effective.touchDrag;
+    fields.showOnAllRepoPages.checked = effective.showOnAllRepoPages;
     fields.keyboardStep.value = String(effective.keyboardStep);
   }
 

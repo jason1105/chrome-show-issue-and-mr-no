@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   CONFIG_STORAGE_KEY,
+  CONFIG_VERSION,
   LEGACY_POSITION_STORAGE_KEY,
   DEFAULT_POSITION,
   createConfigStore,
@@ -79,9 +80,9 @@ test('migrates version 1 search preferences without changing an explicit opt-out
     userOverrides: {},
   });
 
-  assert.equal(explicitOptOut.version, 2);
+  assert.equal(explicitOptOut.version, CONFIG_VERSION);
   assert.equal(explicitOptOut.user.rememberSearch, false);
-  assert.equal(defaultDerivedOptOut.version, 2);
+  assert.equal(defaultDerivedOptOut.version, CONFIG_VERSION);
   assert.equal(defaultDerivedOptOut.user.rememberSearch, true);
   assert.deepEqual(defaultDerivedOptOut.searchState, { query: '', listFilter: null });
 });
@@ -126,9 +127,10 @@ test('migrates an unversioned configuration and persists the current schema', as
     position: { edge: 'left', ratio: 0.75 },
   };
   const migrated = migrateConfig(unversioned);
-  assert.equal(migrated.version, 2);
+  assert.equal(migrated.version, CONFIG_VERSION);
   assert.deepEqual(migrated.userOverrides, { listFilter: true, cacheTtlSeconds: true });
   assert.equal(migrated.user.rememberSearch, true);
+  assert.equal(migrated.user.showOnAllRepoPages, false);
   assert.deepEqual(migrated.searchState, { query: '', listFilter: null });
 
   const storage = createMemoryStorage({ [CONFIG_STORAGE_KEY]: unversioned });
@@ -139,7 +141,7 @@ test('migrates an unversioned configuration and persists the current schema', as
   assert.equal(effective.cacheTtlSeconds, 120);
   assert.equal(effective.maxItemsPerType, 20);
   assert.deepEqual(effective.position, { edge: 'left', ratio: 0.75 });
-  assert.equal(storage.data[CONFIG_STORAGE_KEY].version, 2);
+  assert.equal(storage.data[CONFIG_STORAGE_KEY].version, CONFIG_VERSION);
   assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].userOverrides, {
     listFilter: true,
     cacheTtlSeconds: true,
