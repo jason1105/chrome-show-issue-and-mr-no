@@ -98,6 +98,7 @@
     }
 
     function syncRegisteredScripts() {
+      console.log('[permissions] syncRegisteredScripts called');
       return getAllOrigins()
         .then(({ origins }) => {
           const patterns = buildMatchPatterns(origins);
@@ -126,7 +127,7 @@
             .then(() => {
               if (!patterns.length) return { patterns, registered: false };
               return scriptingApi.registerContentScripts([navigationHookRegistration, contentRegistration])
-                .then(() => ({ patterns, registered: true }), () => ({ patterns, registered: false }));
+                .then(() => { console.log('[permissions] syncRegisteredScripts: registered=2, patterns=', patterns.length); return { patterns, registered: true }; }, (err) => { console.log('[permissions] registerContentScripts failed:', err && err.message); return { patterns, registered: false }; });
             });
         });
     }
