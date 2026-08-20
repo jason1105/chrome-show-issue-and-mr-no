@@ -1197,7 +1197,10 @@ test('keeps state=opened by default and adjusts empty-state copy in all mode', a
   });
   const openRendered = await openAndLoad(openHarness);
   assert.match(openHarness.fetchCalls[0].url, /state=opened/);
-  assert.match(renderedText(openRendered.panel), /暂无 Open items/);
+  const openText = renderedText(openRendered.panel);
+  assert.match(openText, /暂无 Open Issue/);
+  assert.match(openText, /暂无 Open MR/);
+  assert.doesNotMatch(openText, /暂无 Open items/);
 
   const allHarness = createHarness('https://git.example.test/group/app/-/issues/15', {
     storageData: {
@@ -1467,9 +1470,11 @@ test('distinguishes a project with no Open items from filtered no matches', asyn
   });
 
   const rendered = await openAndLoad(harness);
-  const empty = rendered.panel.querySelector('[data-open-items-empty]');
-  assert.equal(empty.getAttribute('role'), 'status');
-  assert.equal(empty.textContent, '暂无 Open items');
+  const openText = renderedText(rendered.panel);
+  assert.match(openText, /暂无 Open Issue/);
+  assert.match(openText, /暂无 Open MR/);
+  assert.equal(rendered.panel.querySelector('[data-open-items-empty]'), null);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 2);
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
 });
 

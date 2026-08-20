@@ -1075,18 +1075,13 @@
       children.push(message);
     }
     const allMode = (activeConfig.itemStateFilter || 'open') === 'all';
-    if (
-      state.visibleGroupsReady
-      && state.totalCount === 0
-      && !(allMode && navigation.query.trim() === '')
-    ) {
+    const naturalEmpty = navigation.query.trim() === '' && state.projectHasNoOpenItems;
+    if (state.visibleGroupsReady && state.totalCount === 0 && !naturalEmpty) {
       const empty = root.document.createElement('div');
       empty.setAttribute('data-open-items-empty', '');
       empty.setAttribute('role', 'status');
       const stateLabel = allMode ? '' : 'Open ';
-      empty.textContent = navigation.query.trim() === '' && state.projectHasNoOpenItems
-        ? `暂无 ${stateLabel}items`
-        : `没有匹配的 ${stateLabel}items`;
+      empty.textContent = `没有匹配的 ${stateLabel}items`;
       children.push(empty);
       return children;
     }
