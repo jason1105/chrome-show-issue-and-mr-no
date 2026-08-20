@@ -143,7 +143,8 @@
 
   function isCurrentCache() {
     return navigation.cache?.key === navigation.projectKey
-      && navigation.cache?.maxItemsPerType === activeConfig.maxItemsPerType;
+      && navigation.cache?.maxItemsPerType === activeConfig.maxItemsPerType
+      && navigation.cache?.itemStateFilter === activeConfig.itemStateFilter;
   }
 
   function itemMatchesQuery(item, query) {
@@ -212,10 +213,10 @@
     }, SEARCH_STATE_SAVE_DELAY_MS);
   }
 
-  function buildItemsApiUrl(reference, resource, page, perPage) {
+  function buildItemsApiUrl(reference, resource, page, perPage, stateParam) {
     const encodedProject = encodeURIComponent(reference.projectPath);
     return `${reference.origin}/api/v4/projects/${encodedProject}/${resource}`
-      + `?state=opened&scope=all&order_by=updated_at&sort=desc&per_page=${perPage}`
+      + `?state=${stateParam}&scope=all&order_by=updated_at&sort=desc&per_page=${perPage}`
       + `&page=${page}`;
   }
 
@@ -275,6 +276,9 @@
     const batchLimit = paginated
       ? Math.min(limit, startPage > 1 ? perPage : (activeConfig.maxItemsPerBatch || perPage))
       : limit;
+    const stateParam = (activeConfig.itemStateFilter || 'open') === 'all'
+      ? 'all'
+      : 'opened';
     const items = [];
     const visitedPages = new Set();
     let page = String(startPage);
@@ -285,7 +289,10 @@
       if (visitedPages.has(page)) throw new Error('Invalid GitLab pagination');
       visitedPages.add(page);
 
-      const response = await fetchWithTimeout(buildItemsApiUrl(reference, resource, page, perPage), { signal });
+      const response = await fetchWithTimeout(
+        buildItemsApiUrl(reference, resource, page, perPage, stateParam),
+        { signal },
+      );
       if (!response?.ok) throw new Error(`GitLab API returned ${response?.status || 'an error'}`);
 
       const body = await response.json();
@@ -298,6 +305,7 @@
           kind,
           iid,
           title: typeof item.title === 'string' ? item.title : '',
+          state: typeof item.state === 'string' ? item.state : '',
           webUrl: typeof item.web_url === 'string' && item.web_url
             ? item.web_url
             : buildFallbackWebUrl(reference, kind, iid),
@@ -916,6 +924,9 @@
     } else {
       row.setAttribute('href', item.webUrl);
     }
+    if (item.state && item.state !== 'opened') {
+      row.setAttribute('data-item-state', item.state);
+    }
 
     const iid = root.document.createElement('span');
     iid.setAttribute('data-open-item-iid', '');
@@ -973,6 +984,9 @@
       const status = root.document.createElement('div');
       status.setAttribute('data-open-items-status', '');
       status.textContent = kind === 'issue' ? '暂无 Open Issue' : '暂无 Open MR';
+      if ((activeConfig.itemStateFilter || 'open') === 'all') {
+        status.textContent = kind === 'issue' ? '暂无 Issue' : '暂无 MR';
+      }
       group.append(status);
       return group;
     }
@@ -1060,13 +1074,14 @@
       message.textContent = navigation.message;
       children.push(message);
     }
-    if (state.visibleGroupsReady && state.totalCount === 0) {
+    const allMode = (activeConfig.itemStateFilter || 'open') === 'all';
+    const naturalEmpty = navigation.query.trim() === '' && state.projectHasNoOpenItems;
+    if (state.visibleGroupsReady && state.totalCount === 0 && !naturalEmpty) {
       const empty = root.document.createElement('div');
       empty.setAttribute('data-open-items-empty', '');
       empty.setAttribute('role', 'status');
-      empty.textContent = navigation.query.trim() === '' && state.projectHasNoOpenItems
-        ? '暂无 Open items'
-        : '没有匹配的 Open items';
+      const stateLabel = allMode ? '' : 'Open ';
+      empty.textContent = `没有匹配的 ${stateLabel}items`;
       children.push(empty);
       return children;
     }
@@ -1317,6 +1332,7 @@
         navigation.cache = {
           key: projectKey,
           maxItemsPerType: activeConfig.maxItemsPerType,
+          itemStateFilter: activeConfig.itemStateFilter,
           loadedAt: root.Date.now(),
           issues: navigation.issues,
           mergeRequests: navigation.mergeRequests,
@@ -1782,7 +1798,8 @@
       .then((effective) => {
         if (destroyed || generation !== configurationGeneration) return;
         const requestPolicyChanged = previous.maxItemsPerType !== effective.maxItemsPerType
-          || previous.loadingMode !== effective.loadingMode;
+          || previous.loadingMode !== effective.loadingMode
+          || previous.itemStateFilter !== effective.itemStateFilter;
         let searchDisplayChanged = false;
         const memoryDisabled = previous.rememberSearch && !effective.rememberSearch;
         if (memoryDisabled) {

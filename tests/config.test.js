@@ -131,6 +131,7 @@ test('migrates an unversioned configuration and persists the current schema', as
   assert.deepEqual(migrated.userOverrides, { listFilter: true, cacheTtlSeconds: true });
   assert.equal(migrated.user.rememberSearch, true);
   assert.equal(migrated.user.showOnAllRepoPages, false);
+  assert.equal(migrated.user.itemStateFilter, 'open');
   assert.deepEqual(migrated.searchState, { query: '', listFilter: null });
 
   const storage = createMemoryStorage({ [CONFIG_STORAGE_KEY]: unversioned });
@@ -147,6 +148,29 @@ test('migrates an unversioned configuration and persists the current schema', as
     cacheTtlSeconds: true,
   });
   assert.equal(storage.calls.set.length, 1);
+});
+
+test('migrates a v3 configuration to v4 with itemStateFilter normalized', () => {
+  const v3Config = {
+    version: 3,
+    user: { showOnAllRepoPages: true, itemStateFilter: 'all' },
+    userOverrides: { showOnAllRepoPages: true },
+    sites: {},
+    position: { edge: 'top', ratio: 0.5 },
+    searchState: { query: '', listFilter: null },
+  };
+  const migrated = migrateConfig(v3Config);
+  assert.equal(migrated.version, CONFIG_VERSION);
+  assert.equal(migrated.user.itemStateFilter, 'all');
+  assert.equal(migrated.user.showOnAllRepoPages, true);
+  assert.equal(migrated.userOverrides.itemStateFilter, true);
+
+  const invalidState = migrateConfig({
+    ...v3Config,
+    user: { itemStateFilter: 'garbage' },
+    userOverrides: {},
+  });
+  assert.equal(invalidState.user.itemStateFilter, 'open');
 });
 
 test('merges a site profile with user preferences while preserving protected limits', () => {

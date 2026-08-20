@@ -6,5 +6,8 @@
   "scripts": {
     "test": "node --test tests/parser.test.js tests/config.test.js tests/content.test.js tests/manifest.test.js tests/options.test.js tests/permissions.test.js tests/background.test.js",
     "test:browser": "node --test tests/browser.test.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.8.0"
   }
 }

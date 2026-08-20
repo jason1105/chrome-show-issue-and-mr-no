@@ -7,7 +7,7 @@
 })(typeof globalThis === 'undefined' ? this : globalThis, () => {
   'use strict';
 
-  const CONFIG_VERSION = 3;
+  const CONFIG_VERSION = 4;
   const CONFIG_STORAGE_KEY = 'gitlabReferenceConfig';
   const LEGACY_POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
   const DEFAULT_POSITION = Object.freeze({ edge: 'top', ratio: 0.5 });
@@ -24,6 +24,7 @@
     touchDrag: true,
     keyboardStep: 8,
     showOnAllRepoPages: false,
+    itemStateFilter: 'open',
   });
   const PROTECTED_CONFIG = Object.freeze({
     allowRemoteConfig: false,
@@ -85,6 +86,32 @@
         userOverrides,
       };
     },
+    3(input) {
+      const user = input.user && typeof input.user === 'object' ? { ...input.user } : {};
+      const userOverrides = input.userOverrides && typeof input.userOverrides === 'object'
+        ? { ...input.userOverrides }
+        : Object.fromEntries(Object.keys(DEFAULT_USER)
+          .filter((name) => Object.prototype.hasOwnProperty.call(user, name))
+          .map((name) => [name, true]));
+      // New in v4: item state filter (open/all). Older configs keep the
+      // historical open-only behavior. A v3 config that already carries an
+      // explicit itemStateFilter (e.g. written by later builds) counts as a
+      // user-set preference and is recorded in userOverrides accordingly.
+      const hadExplicitItemStateFilter = Object.prototype.hasOwnProperty.call(
+        user,
+        'itemStateFilter',
+      );
+      user.itemStateFilter = user.itemStateFilter === 'all' ? 'all' : 'open';
+      if (hadExplicitItemStateFilter) {
+        userOverrides.itemStateFilter = true;
+      }
+      return {
+        ...input,
+        version: 4,
+        user,
+        userOverrides,
+      };
+    },
   });
 
   function clone(value) {
@@ -131,6 +158,9 @@
       return value === 'issue' || value === 'merge-request' || value === 'all'
         ? value
         : fallback;
+    }
+    if (name === 'itemStateFilter') {
+      return value === 'open' || value === 'all' ? value : fallback;
     }
     if (name === 'loadingMode') {
       return value === 'parallel' || value === 'sequential' || value === 'paginated'
