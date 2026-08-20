@@ -107,7 +107,8 @@
             js: [...CONTENT_SCRIPT_FILES],
             matches: patterns,
             runAt: options.runAt || 'document_start',
-            persistAcrossSessions: options.persistAcrossSessions === true,
+            // #14: persist so registrations survive browser restarts.
+            persistAcrossSessions: true,
           };
           const navigationHookRegistration = {
             id: NAVIGATION_HOOK_SCRIPT_ID,
@@ -115,7 +116,8 @@
             matches: patterns,
             runAt: options.runAt || 'document_start',
             world: 'MAIN',
-            persistAcrossSessions: options.persistAcrossSessions === true,
+            // #14: persist so registrations survive browser restarts.
+            persistAcrossSessions: true,
           };
           return scriptingApi.unregisterContentScripts({
             ids: [REGISTERED_SCRIPT_ID, NAVIGATION_HOOK_SCRIPT_ID],

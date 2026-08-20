@@ -106,7 +106,8 @@ test('requestOrigin grants, registers scripts, and clears pending origin', async
   assert.deepEqual(registration.js, CONTENT_SCRIPT_FILES);
   assert.deepEqual(registration.matches, ['https://gitlab.com/*']);
   assert.equal(registration.runAt, 'document_start');
-  assert.equal(registration.persistAcrossSessions, false);
+  assert.equal(registration.persistAcrossSessions, true);
+  assert.equal(hookRegistration.persistAcrossSessions, true);
   assert.deepEqual(state.stored[PENDING_ORIGINS_STORAGE_KEY], []);
 });
 
