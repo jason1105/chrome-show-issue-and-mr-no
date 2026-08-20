@@ -739,7 +739,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
       js: ['src/parser.js', 'src/config.js', 'src/content.js'],
       matches: [`${origin}/*`],
       runAt: 'document_start',
-      persistAcrossSessions: false,
+      persistAcrossSessions: true,
     }, 'options gesture should register the dynamic content scripts');
 
     await cdpClient.send('Page.navigate', { url: issueUrl });
