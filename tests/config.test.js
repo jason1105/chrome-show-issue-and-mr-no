@@ -101,6 +101,97 @@ test('normalizes persisted search query and type filter', () => {
   }).searchState, { query: '', listFilter: null });
 });
 
+test('migrates a legacy local configuration into sync on first load (#17)', async () => {
+  const syncStorage = createMemoryStorage();
+  const legacyLocalStorage = createMemoryStorage({
+    [CONFIG_STORAGE_KEY]: {
+      version: 1,
+      user: { listFilter: 'issue', cacheTtlSeconds: 120 },
+      sites: {
+        'https://git.example.test': { maxItemsPerType: 20 },
+      },
+      position: { edge: 'left', ratio: 0.75 },
+    },
+  });
+  const store = createConfigStore(syncStorage, { legacyStorage: legacyLocalStorage });
+
+  const effective = await store.load('https://git.example.test');
+
+  assert.equal(effective.listFilter, 'issue');
+  assert.equal(effective.cacheTtlSeconds, 120);
+  assert.equal(effective.maxItemsPerType, 20);
+  assert.deepEqual(effective.position, { edge: 'left', ratio: 0.75 });
+  // The migrated record is persisted (and re-migrated to the current schema)
+  // into the sync area, while the legacy local copy is left untouched.
+  assert.equal(syncStorage.data[CONFIG_STORAGE_KEY].version, CONFIG_VERSION);
+  assert.deepEqual(syncStorage.data[CONFIG_STORAGE_KEY].userOverrides, {
+    listFilter: true,
+    cacheTtlSeconds: true,
+  });
+  assert.equal(legacyLocalStorage.data[CONFIG_STORAGE_KEY].version, 1);
+});
+
+test('does not overwrite an existing sync configuration from legacy local (#17)', async () => {
+  const syncConfig = {
+    version: 4,
+    user: { listFilter: 'merge-request', cacheTtlSeconds: 240 },
+    userOverrides: { listFilter: true, cacheTtlSeconds: true },
+    sites: {},
+    position: { edge: 'right', ratio: 0.25 },
+    searchState: { query: '', listFilter: null },
+  };
+  const syncStorage = createMemoryStorage({ [CONFIG_STORAGE_KEY]: syncConfig });
+  const legacyLocalStorage = createMemoryStorage({
+    [CONFIG_STORAGE_KEY]: {
+      version: 1,
+      user: { listFilter: 'issue' },
+    },
+  });
+  const store = createConfigStore(syncStorage, { legacyStorage: legacyLocalStorage });
+
+  const effective = await store.load('https://git.example.test');
+
+  assert.equal(effective.listFilter, 'merge-request');
+  assert.equal(effective.cacheTtlSeconds, 240);
+  // Sync data wins; the legacy copy is not promoted over it.
+  assert.deepEqual(syncStorage.data[CONFIG_STORAGE_KEY], syncConfig);
+});
+
+test('migration is skipped when neither area holds a configuration (#17)', async () => {
+  const syncStorage = createMemoryStorage();
+  const legacyLocalStorage = createMemoryStorage();
+  const store = createConfigStore(syncStorage, { legacyStorage: legacyLocalStorage });
+
+  await store.load('https://git.example.test');
+
+  assert.equal(syncStorage.data[CONFIG_STORAGE_KEY], undefined);
+  assert.deepEqual(legacyLocalStorage.calls.get, [[CONFIG_STORAGE_KEY]]);
+});
+
+test('ignores storage-change events from the legacy local area (#17)', async () => {
+  const storage = createMemoryStorage();
+  const changes = new Set();
+  const onChanged = {
+    addListener(listener) {
+      changes.add(listener);
+    },
+    removeListener(listener) {
+      changes.delete(listener);
+    },
+  };
+  const store = createConfigStore(storage, { storageChangeEvents: onChanged });
+  await store.load('https://git.example.test');
+
+  await Promise.all([...changes].map((listener) => listener({
+    [CONFIG_STORAGE_KEY]: { newValue: { version: 1, user: { listFilter: 'issue' } } },
+  }, 'local')));
+  await Promise.all([...changes].map((listener) => listener({
+    [CONFIG_STORAGE_KEY]: { newValue: { version: 1, user: { listFilter: 'merge-request' } } },
+  }, 'sync')));
+
+  assert.equal(store.getEffective('https://git.example.test').listFilter, 'merge-request');
+});
+
 test('migrates the legacy position key into the versioned configuration', async () => {
   const storage = createMemoryStorage({
     [LEGACY_POSITION_STORAGE_KEY]: { edge: 'right', ratio: 0.25 },
@@ -325,7 +416,7 @@ test('updates an existing store when another context changes configuration', asy
   await firstStore.save({ listFilter: 'merge-request' }, 'https://git.example.test');
   await Promise.all([...changes].map((listener) => listener({
       [CONFIG_STORAGE_KEY]: { newValue: storage.data[CONFIG_STORAGE_KEY] },
-    }, 'local')));
+    }, 'sync')));
 
   assert.equal(secondStore.getEffective('https://git.example.test').listFilter, 'merge-request');
 });

@@ -80,7 +80,8 @@
     position: { ...defaultConfig.position },
     searchState: { ...defaultConfig.searchState },
   };
-  const configStore = configApi.createConfigStore(root.chrome?.storage?.local, {
+  const configStore = configApi.createConfigStore(root.chrome?.storage?.sync, {
+    legacyStorage: root.chrome?.storage?.local,
     storageChangeEvents: root.chrome?.storage?.onChanged,
     onConfigChanged() {
       updateConfig(getCurrentOrigin(), { force: true });

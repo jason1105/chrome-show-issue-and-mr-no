@@ -507,7 +507,7 @@ async function waitForStoredSearchState(
     observerClient = await CdpClient.connect(target.webSocketDebuggerUrl);
     await observerClient.send('Runtime.enable');
     return await waitForValue(observerClient, `(async () => {
-      const result = await chrome.storage.local.get('gitlabReferenceConfig');
+      const result = await chrome.storage.sync.get('gitlabReferenceConfig');
       const searchState = result.gitlabReferenceConfig?.searchState;
       if (
         searchState?.query !== ${JSON.stringify(expectedState.query)}

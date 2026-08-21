@@ -384,7 +384,10 @@ function createHarness(initialUrl, options = {}) {
   }
 
   const storage = options.storage === false ? undefined : {
-    local: {
+    // Both areas share one backing record so existing tests keep their
+    // single data source; the extension reads config from sync and uses
+    // local only as the legacy migration source (#17).
+    sync: {
       get(key) {
         storageCalls.get.push(key);
         if (options.storageGetError) return Promise.reject(options.storageGetError);
@@ -401,7 +404,7 @@ function createHarness(initialUrl, options = {}) {
           ]),
         );
         Object.assign(storageData, value);
-        for (const listener of storageChangeListeners) listener(changes, 'local');
+        for (const listener of storageChangeListeners) listener(changes, 'sync');
         return Promise.resolve();
       },
       remove(key) {
@@ -410,7 +413,27 @@ function createHarness(initialUrl, options = {}) {
         const oldValue = storageData[key];
         delete storageData[key];
         const change = { [key]: { oldValue, newValue: undefined } };
-        for (const listener of storageChangeListeners) listener(change, 'local');
+        for (const listener of storageChangeListeners) listener(change, 'sync');
+        return Promise.resolve();
+      },
+    },
+    local: {
+      get(key) {
+        storageCalls.get.push(key);
+        if (options.storageGetError) return Promise.reject(options.storageGetError);
+        const keys = Array.isArray(key) ? key : [key];
+        return Promise.resolve(Object.fromEntries(keys.map((name) => [name, storageData[name]])));
+      },
+      set(value) {
+        storageCalls.set.push(value);
+        if (options.storageSetError) return Promise.reject(options.storageSetError);
+        Object.assign(storageData, value);
+        return Promise.resolve();
+      },
+      remove(key) {
+        storageCalls.remove.push(key);
+        if (options.storageRemoveError) return Promise.reject(options.storageRemoveError);
+        delete storageData[key];
         return Promise.resolve();
       },
     },
@@ -483,7 +506,7 @@ function createHarness(initialUrl, options = {}) {
     storageCalls,
     storageData,
     runtimeOpenOptionsCalls,
-    dispatchStorageChanged(changes, areaName = 'local') {
+    dispatchStorageChanged(changes, areaName = 'sync') {
       return Promise.all([...storageChangeListeners].map((listener) => listener(changes, areaName)));
     },
     dispatchWindow(type, overrides = {}) {
@@ -755,7 +778,11 @@ test('restores a shared stored position and falls back from invalid data', async
 
   assert.deepEqual(
     harness.storageCalls.get.map((keys) => [...keys]),
-    [[CONFIG_STORAGE_KEY, POSITION_STORAGE_KEY]],
+    [
+      [CONFIG_STORAGE_KEY],
+      [CONFIG_STORAGE_KEY],
+      [CONFIG_STORAGE_KEY, POSITION_STORAGE_KEY],
+    ],
   );
   assert.equal(rendered.host.getAttribute('data-edge'), 'right');
   assert.equal(readPixelStyle(rendered.host, '--reference-left'), 1112);

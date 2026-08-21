@@ -283,9 +283,26 @@
     let pendingLoad = null;
     let disposed = false;
     let storedConfigPresent = Boolean(options.initialConfig);
+    const legacyStorage = options.legacyStorage;
 
     function getEffective(origin) {
       return getEffectiveConfig(config, origin);
+    }
+
+    // One-time, idempotent migration (#17): the primary storage area is now
+    // sync (so uninstall/reinstall restores configuration from the signed-in
+    // Chrome account). Older builds persisted to storage.local. On first load
+    // after upgrade, copy the local record into sync when sync has none. The
+    // local copy is intentionally kept — background.js reads it during its
+    // legacy origin migration on update, and keeping it makes the migration
+    // re-runnable after a transient failure.
+    async function migrateFromLegacyStorage() {
+      if (!legacyStorage?.get || !storage?.set) return;
+      const primary = await storage.get([CONFIG_STORAGE_KEY]);
+      if (primary?.[CONFIG_STORAGE_KEY] !== undefined) return;
+      const legacy = await legacyStorage.get([CONFIG_STORAGE_KEY]);
+      if (legacy?.[CONFIG_STORAGE_KEY] === undefined) return;
+      await storage.set({ [CONFIG_STORAGE_KEY]: legacy[CONFIG_STORAGE_KEY] });
     }
 
     async function persist(nextConfig = config) {
@@ -352,6 +369,7 @@
       pendingLoad = (async () => {
         let migration;
         try {
+          await migrateFromLegacyStorage();
           migration = await refreshFromStorage();
         } catch {
           config = getDefaultConfig();
@@ -474,7 +492,7 @@
     }
 
     async function handleStorageChanged(changes, areaName) {
-      if (disposed || (areaName && areaName !== 'local')) return;
+      if (disposed || (areaName && areaName !== 'sync')) return;
       if (!changes?.[CONFIG_STORAGE_KEY] && !changes?.[LEGACY_POSITION_STORAGE_KEY]) return;
 
       try {
