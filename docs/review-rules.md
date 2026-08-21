@@ -57,7 +57,7 @@ docs/               — 设计文档、实施计划、测试文档、Review 规�
 ### 3.2 数据保护
 
 - `PROTECTED_CONFIG` 不可被外部输入覆盖：`allowRemoteConfig: false`、`storeSensitiveData: false`
-- 配置持久化到 `chrome.storage.local`，不存储敏感数据
+- 配置持久化到 `chrome.storage.sync`（旧版 `storage.local` 数据首次加载时自动迁移），不存储敏感数据
 - 禁止 `innerHTML` 直接拼接用户/API 数据；使用 `textContent` 或 `createElement` + 白名单属性
 
 ### 3.3 URL 解析安全

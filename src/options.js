@@ -6,8 +6,9 @@
   if (root) root.GitLabReferenceOptions = api;
   if (!root.document || !root.GitLabReferenceConfig) return;
 
-  const storage = root.chrome?.storage?.local;
+  const storage = root.chrome?.storage?.sync;
   const store = root.GitLabReferenceConfig.createConfigStore(storage, {
+    legacyStorage: root.chrome?.storage?.local,
     storageChangeEvents: root.chrome?.storage?.onChanged,
   });
   const permissionsApi = root.GitLabReferencePermissions
