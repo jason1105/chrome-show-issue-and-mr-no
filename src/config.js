@@ -7,7 +7,7 @@
 })(typeof globalThis === 'undefined' ? this : globalThis, () => {
   'use strict';
 
-  const CONFIG_VERSION = 4;
+  const CONFIG_VERSION = 5;
   const CONFIG_STORAGE_KEY = 'gitlabReferenceConfig';
   const LEGACY_POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
   const DEFAULT_POSITION = Object.freeze({ edge: 'top', ratio: 0.5 });
@@ -25,6 +25,7 @@
     keyboardStep: 8,
     showOnAllRepoPages: false,
     itemStateFilter: 'open',
+    searchScope: 'title',
   });
   const PROTECTED_CONFIG = Object.freeze({
     allowRemoteConfig: false,
@@ -112,6 +113,32 @@
         userOverrides,
       };
     },
+    4(input) {
+      const user = input.user && typeof input.user === 'object' ? { ...input.user } : {};
+      const userOverrides = input.userOverrides && typeof input.userOverrides === 'object'
+        ? { ...input.userOverrides }
+        : Object.fromEntries(Object.keys(DEFAULT_USER)
+          .filter((name) => Object.prototype.hasOwnProperty.call(user, name))
+          .map((name) => [name, true]));
+      // New in v5: search scope (title/number). Older configs default to the
+      // new title-matching behavior. A v4 config that already carries an
+      // explicit searchScope (e.g. written by later builds) counts as a
+      // user-set preference and is recorded in userOverrides accordingly.
+      const hadExplicitSearchScope = Object.prototype.hasOwnProperty.call(
+        user,
+        'searchScope',
+      );
+      user.searchScope = user.searchScope === 'number' ? 'number' : 'title';
+      if (hadExplicitSearchScope) {
+        userOverrides.searchScope = true;
+      }
+      return {
+        ...input,
+        version: 5,
+        user,
+        userOverrides,
+      };
+    },
   });
 
   function clone(value) {
@@ -161,6 +188,9 @@
     }
     if (name === 'itemStateFilter') {
       return value === 'open' || value === 'all' ? value : fallback;
+    }
+    if (name === 'searchScope') {
+      return value === 'title' || value === 'number' ? value : fallback;
     }
     if (name === 'loadingMode') {
       return value === 'parallel' || value === 'sequential' || value === 'paginated'

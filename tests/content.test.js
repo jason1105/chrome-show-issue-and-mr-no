@@ -1480,6 +1480,96 @@ test('searches exact references and case-insensitive title substrings locally', 
   assert.equal(harness.fetchCalls.length, 2);
 });
 
+test('matches bare numbers against titles by default (title scope)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/8', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 8, title: 'Fix login bug' },
+        { iid: 11, title: 'Depends on #8' },
+      ]),
+      jsonResponse([
+        { iid: 48, title: 'Backend refactor 8' },
+        { iid: 3, title: 'Unrelated' },
+      ]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  const rendered = searchOpenItems(harness, '8');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['issue', '8'], ['issue', '11'], ['merge-request', '48']],
+  );
+});
+
+test('restricts bare-number search to exact iid in number scope', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/8', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 2,
+        user: { searchScope: 'number' },
+      },
+    },
+    fetchResults: [
+      jsonResponse([
+        { iid: 8, title: 'Fix login bug' },
+        { iid: 11, title: 'Depends on #8' },
+      ]),
+      jsonResponse([
+        { iid: 48, title: 'Backend refactor 8' },
+        { iid: 3, title: 'Unrelated' },
+      ]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  const rendered = searchOpenItems(harness, '8');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['issue', '8']],
+  );
+});
+
+test('keeps # and ! references exact regardless of search scope', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/8', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 2,
+        user: { searchScope: 'number' },
+      },
+    },
+    fetchResults: [
+      jsonResponse([
+        { iid: 8, title: 'Fix login bug' },
+        { iid: 11, title: 'Depends on #8' },
+      ]),
+      jsonResponse([
+        { iid: 48, title: 'Backend refactor 8' },
+        { iid: 3, title: 'Unrelated' },
+      ]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  let rendered = searchOpenItems(harness, '#8');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['8'],
+  );
+
+  rendered = searchOpenItems(harness, '!48');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['48'],
+  );
+});
+
 test('updates search results during IME composition without replacing the input node', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/12', {
     fetchResults: [

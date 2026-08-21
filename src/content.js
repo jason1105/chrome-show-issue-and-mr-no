@@ -166,7 +166,11 @@
       return item.kind === 'merge-request' && item.iid === mergeRequestReference[1];
     }
 
-    if (/^[1-9][0-9]*$/.test(normalized)) return item.iid === normalized;
+    if (/^[1-9][0-9]*$/.test(normalized)) {
+      if (activeConfig.searchScope === 'number') return item.iid === normalized;
+      return item.iid === normalized
+        || item.title.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());
+    }
     return item.title.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());
   }
 
@@ -1920,7 +1924,8 @@
         }
         const navigationDisplayChanged = searchDisplayChanged
           || previous.showLastRefresh !== effective.showLastRefresh
-          || previous.showOnAllRepoPages !== effective.showOnAllRepoPages;
+          || previous.showOnAllRepoPages !== effective.showOnAllRepoPages
+          || previous.searchScope !== effective.searchScope;
         const nextPosition = configApi.normalizePosition(effective.position);
         const preserveLocalPosition = Boolean(drag || pendingPositionSave);
         if (!preserveLocalPosition) persistedPosition = { ...nextPosition };

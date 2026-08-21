@@ -133,7 +133,7 @@ test('migrates a legacy local configuration into sync on first load (#17)', asyn
 
 test('does not overwrite an existing sync configuration from legacy local (#17)', async () => {
   const syncConfig = {
-    version: 4,
+    version: CONFIG_VERSION,
     user: { listFilter: 'merge-request', cacheTtlSeconds: 240 },
     userOverrides: { listFilter: true, cacheTtlSeconds: true },
     sites: {},
@@ -262,6 +262,28 @@ test('migrates a v3 configuration to v4 with itemStateFilter normalized', () => 
     userOverrides: {},
   });
   assert.equal(invalidState.user.itemStateFilter, 'open');
+});
+
+test('migrates a v4 configuration to v5 with searchScope normalized', () => {
+  const v4Config = {
+    version: 4,
+    user: { searchScope: 'number', itemStateFilter: 'all' },
+    userOverrides: { itemStateFilter: true },
+    sites: {},
+    position: { edge: 'top', ratio: 0.5 },
+    searchState: { query: '', listFilter: null },
+  };
+  const migrated = migrateConfig(v4Config);
+  assert.equal(migrated.version, CONFIG_VERSION);
+  assert.equal(migrated.user.searchScope, 'number');
+  assert.equal(migrated.userOverrides.searchScope, true);
+
+  const invalidState = migrateConfig({
+    ...v4Config,
+    user: { searchScope: 'garbage' },
+    userOverrides: {},
+  });
+  assert.equal(invalidState.user.searchScope, 'title');
 });
 
 test('merges a site profile with user preferences while preserving protected limits', () => {

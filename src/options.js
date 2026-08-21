@@ -30,6 +30,7 @@
     // removed. Kept as a known (nullable) field so the config plumbing stays
     // intact while the panel owns the value.
     itemStateFilter: 'item-state-filter',
+    searchScope: 'search-scope',
     rememberSearch: 'remember-search',
     cacheTtlSeconds: 'cache-ttl',
     maxItemsPerType: 'max-items',
@@ -45,6 +46,7 @@
   function buildUserPatch(fields) {
     const patch = {
       listFilter: fields.listFilter.value,
+      searchScope: fields.searchScope.value,
       rememberSearch: Boolean(fields.rememberSearch.checked),
       loadingMode: fields.loadingMode.value,
       showLastRefresh: Boolean(fields.showLastRefresh.checked),
@@ -75,6 +77,7 @@
   function applyEffectiveConfig(fields, effective) {
     fields.listFilter.value = effective.listFilter;
     if (fields.itemStateFilter) fields.itemStateFilter.value = effective.itemStateFilter;
+    fields.searchScope.value = effective.searchScope;
     fields.rememberSearch.checked = effective.rememberSearch;
     fields.cacheTtlSeconds.value = String(effective.cacheTtlSeconds);
     fields.maxItemsPerType.value = String(effective.maxItemsPerType);
