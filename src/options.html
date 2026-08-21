@@ -30,6 +30,14 @@
             <span>记住列表搜索条件</span>
           </label>
           <label>
+            <span>搜索范围</span>
+            <select id="search-scope">
+              <option value="title">标题与编号</option>
+              <option value="number">仅编号</option>
+            </select>
+          </label>
+          <p class="field-hint">输入纯数字时：默认同时匹配标题含该数字与相同编号的条目；选择“仅编号”则只精确匹配编号。</p>
+          <label>
             <span>缓存有效期（秒）</span>
             <input id="cache-ttl" type="number" min="5" max="300" step="1" inputmode="numeric">
           </label>
