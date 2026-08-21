@@ -3,106 +3,107 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GitLab Issue/MR Number Pin 设置</title>
+    <title>__MSG_optionsTitle__</title>
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
     <main class="settings-shell">
       <header class="settings-header">
-        <p class="eyebrow">GitLab Issue/MR Number Pin</p>
-        <h1>设置</h1>
-        <p>调整列表、缓存和控件交互偏好。</p>
+        <p class="eyebrow">__MSG_settingsEyebrow__</p>
+        <h1>__MSG_settingsHeading__</h1>
+        <p>__MSG_settingsDescription__</p>
       </header>
       <form id="settings-form" class="settings-form">
         <fieldset>
-          <legend>列表</legend>
+          <legend>__MSG_sectionList__</legend>
           <label>
-            <span>默认列表筛选</span>
+            <span>__MSG_defaultListFilter__</span>
             <select id="list-filter">
-              <option value="all">Issues 和 Merge requests</option>
-              <option value="issue">仅 Issues</option>
-              <option value="merge-request">仅 Merge requests</option>
+              <option value="all">__MSG_listFilterAll__</option>
+              <option value="issue">__MSG_listFilterIssue__</option>
+              <option value="merge-request">__MSG_listFilterMergeRequest__</option>
             </select>
           </label>
-          <p class="field-hint">议题/MR 状态筛选（仅 Open / 全部状态）已移至面板内，可直接在面板中切换。</p>
+          <p class="field-hint">__MSG_stateFilterMovedHint__</p>
           <label class="check-row">
             <input id="remember-search" type="checkbox">
-            <span>记住列表搜索条件</span>
+            <span>__MSG_rememberSearch__</span>
           </label>
           <label>
-            <span>搜索范围</span>
+            <span>__MSG_searchScope__</span>
             <select id="search-scope">
-              <option value="title">标题与编号</option>
-              <option value="number">仅编号</option>
+              <option value="title">__MSG_searchScopeTitle__</option>
+              <option value="number">__MSG_searchScopeNumber__</option>
             </select>
           </label>
-          <p class="field-hint">输入纯数字时：默认同时匹配标题含该数字与相同编号的条目；选择“仅编号”则只精确匹配编号。</p>
+          <p class="field-hint">__MSG_searchScopeHint__</p>
           <label>
-            <span>缓存有效期（秒）</span>
+            <span>__MSG_cacheTtl__</span>
             <input id="cache-ttl" type="number" min="5" max="300" step="1" inputmode="numeric">
           </label>
           <label>
-            <span>每类最多显示数量</span>
+            <span>__MSG_maxItemsPerType__</span>
             <input id="max-items" type="number" min="1" max="100" step="1" inputmode="numeric">
           </label>
           <label>
-            <span>加载模式</span>
+            <span>__MSG_loadingMode__</span>
             <select id="loading-mode">
-              <option value="parallel">并行加载</option>
-              <option value="sequential">顺序加载</option>
-              <option value="paginated">渐进加载（首批 + 加载更多）</option>
+              <option value="parallel">__MSG_loadingModeParallel__</option>
+              <option value="sequential">__MSG_loadingModeSequential__</option>
+              <option value="paginated">__MSG_loadingModePaginated__</option>
             </select>
           </label>
           <label>
-            <span>渐进加载每批数量</span>
+            <span>__MSG_maxItemsPerBatch__</span>
             <input id="max-items-batch" type="number" min="1" max="100" step="1" inputmode="numeric">
           </label>
           <label>
-            <span>单次请求超时（毫秒）</span>
+            <span>__MSG_requestTimeout__</span>
             <input id="request-timeout" type="number" min="1000" max="60000" step="500" inputmode="numeric">
           </label>
         </fieldset>
         <fieldset>
-          <legend>显示与交互</legend>
+          <legend>__MSG_sectionDisplay__</legend>
           <label class="check-row">
             <input id="show-all-repo-pages" type="checkbox">
-            <span>在仓库内所有页面显示（全 repo 模式）</span>
+            <span>__MSG_showOnAllRepoPages__</span>
           </label>
           <label class="check-row">
             <input id="show-last-refresh" type="checkbox">
-            <span>显示最后刷新时间</span>
+            <span>__MSG_showLastRefresh__</span>
           </label>
           <label class="check-row">
             <input id="touch-drag" type="checkbox">
-            <span>启用触屏拖动控件</span>
+            <span>__MSG_touchDrag__</span>
           </label>
           <label>
-            <span>键盘移动步长（像素）</span>
+            <span>__MSG_keyboardStep__</span>
             <input id="keyboard-step" type="number" min="1" max="50" step="1" inputmode="numeric">
           </label>
         </fieldset>
         <fieldset>
-          <legend>实例授权</legend>
-          <p class="field-hint">为需要展示 Issue/MR 编号的 GitLab 实例授权。权限按实例精确授予，可随时撤销。</p>
-          <ul id="granted-origins" class="granted-origins" aria-label="已授权的 GitLab 实例"></ul>
+          <legend>__MSG_sectionAuth__</legend>
+          <p class="field-hint">__MSG_authHint__</p>
+          <ul id="granted-origins" class="granted-origins" aria-label="__MSG_grantedOriginsLabel__"></ul>
           <label>
-            <span>GitLab 实例地址</span>
+            <span>__MSG_originAddress__</span>
             <input id="origin-input" type="url" placeholder="https://gitlab.example.com" inputmode="url">
           </label>
           <div class="origin-actions">
-            <button id="grant-origin" type="button" class="secondary">授权实例</button>
+            <button id="grant-origin" type="button" class="secondary">__MSG_grantInstance__</button>
           </div>
           <p id="origin-status" class="status" role="status" aria-live="polite"></p>
         </fieldset>
         <div class="settings-actions">
-          <button id="reset-settings" type="button" class="secondary">恢复默认值</button>
-          <button type="submit" class="primary">保存设置</button>
+          <button id="reset-settings" type="button" class="secondary">__MSG_resetDefaults__</button>
+          <button type="submit" class="primary">__MSG_saveSettings__</button>
         </div>
         <p id="status" class="status" role="status" aria-live="polite"></p>
       </form>
     </main>
     <script src="config.js"></script>
     <script src="permissions.js"></script>
+    <script src="i18n.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

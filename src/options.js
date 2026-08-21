@@ -1,7 +1,7 @@
 (function initializeGitLabReferenceOptions(root, factory) {
   'use strict';
 
-  const api = factory(root.GitLabReferenceConfig);
+  const api = factory(root.GitLabReferenceConfig, root.GitLabReferenceI18n);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.GitLabReferenceOptions = api;
   if (!root.document || !root.GitLabReferenceConfig) return;
@@ -21,8 +21,14 @@
     permissionsApi,
   );
   controller.init();
-})(typeof globalThis === 'undefined' ? this : globalThis, () => {
+})(typeof globalThis === 'undefined' ? this : globalThis, (configApi, i18nApi) => {
   'use strict';
+
+  const t = (key, substitutions) => (
+    i18nApi && typeof i18nApi.getMessage === 'function'
+      ? i18nApi.getMessage(key, substitutions)
+      : key
+  );
 
   const FIELD_IDS = {
     listFilter: 'list-filter',
@@ -120,17 +126,17 @@
           const revoke = document.createElement('button');
           revoke.type = 'button';
           revoke.className = 'secondary origin-revoke';
-          revoke.textContent = '撤销';
-          revoke.setAttribute('aria-label', `撤销 ${item} 的授权`);
+          revoke.textContent = t('revoke');
+          revoke.setAttribute('aria-label', t('revokeAriaLabel', [item]));
           revoke.addEventListener('click', () => {
             setOriginStatus('');
             permissionController.removeOrigin(item).then((result) => {
               if (!result.ok) {
-                setOriginStatus(`撤销 ${item} 的授权失败，请重试`, true);
+                setOriginStatus(t('revokeFailed', [item]), true);
                 refreshOrigins();
                 return;
               }
-              setOriginStatus(`已撤销 ${item} 的授权`);
+              setOriginStatus(t('revoked', [item]));
               refreshOrigins();
             });
           });
@@ -141,14 +147,14 @@
       if (!origins.length) {
         const li = document.createElement('li');
         li.className = 'origin-empty';
-        li.textContent = '尚未授权任何实例';
+        li.textContent = t('noOriginGranted');
         grantedList.appendChild(li);
       }
       for (const item of pendingOrigins) {
         if (origins.includes(item)) continue;
         const li = document.createElement('li');
         li.className = 'origin-pending';
-        li.textContent = `${item}（待重新授权）`;
+        li.textContent = t('pendingReauth', [item]);
         grantedList.appendChild(li);
       }
     }
@@ -170,16 +176,16 @@
       permissionController.requestOrigin(originInput.value).then((result) => {
         if (!result.ok) {
           if (result.reason === 'invalid-origin') {
-            setOriginStatus('实例地址无效，请输入完整的 http(s) 地址', true);
+            setOriginStatus(t('originInvalid'), true);
           } else if (result.reason === 'denied') {
-            setOriginStatus('授权被拒绝，可稍后在实例列表中重试', true);
+            setOriginStatus(t('originDenied'), true);
           } else {
-            setOriginStatus('当前浏览器不支持运行时授权', true);
+            setOriginStatus(t('originUnsupported'), true);
           }
           return;
         }
         originInput.value = '';
-        setOriginStatus(`已授权 ${result.origin}`);
+        setOriginStatus(t('originGranted', [result.origin]));
         refreshOrigins();
       });
     }
@@ -206,10 +212,10 @@
       pending = store.save(patch, origin)
         .then((effective) => {
           applyEffectiveConfig(fields, effective);
-          setStatus('设置已保存');
+          setStatus(t('settingsSaved'));
         })
         .catch(() => {
-          setStatus('保存失败，请检查浏览器存储空间', true);
+          setStatus(t('settingsSaveFailed'), true);
         });
     }
 
@@ -218,10 +224,10 @@
       pending = store.reset(origin)
         .then((effective) => {
           applyEffectiveConfig(fields, effective);
-          setStatus('已恢复默认设置');
+          setStatus(t('settingsReset'));
         })
         .catch(() => {
-          setStatus('恢复默认设置失败', true);
+          setStatus(t('settingsResetFailed'), true);
         });
     }
 

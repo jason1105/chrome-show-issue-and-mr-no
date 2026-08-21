@@ -1,0 +1,394 @@
+{
+  "extName": {
+    "message": "GitLab Issue/MR Number Pin",
+    "description": "Extension name used in the manifest (name)."
+  },
+  "extDescription": {
+    "message": "Keep the current GitLab Issue or Merge Request number visible while scrolling.",
+    "description": "Extension description used in the manifest (description)."
+  },
+  "optionsTitle": {
+    "message": "GitLab Issue/MR Number Pin Settings",
+    "description": "Browser tab title for the options page."
+  },
+  "settingsEyebrow": {
+    "message": "GitLab Issue/MR Number Pin",
+    "description": "Extension name shown as the options page eyebrow."
+  },
+  "settingsHeading": {
+    "message": "Settings",
+    "description": "Main heading of the options page."
+  },
+  "settingsDescription": {
+    "message": "Adjust list, cache, and control interaction preferences.",
+    "description": "Intro paragraph under the options page heading."
+  },
+  "sectionList": {
+    "message": "List",
+    "description": "Fieldset legend for list-related options."
+  },
+  "defaultListFilter": {
+    "message": "Default list filter",
+    "description": "Label for the default list filter select."
+  },
+  "listFilterAll": {
+    "message": "Issues and merge requests",
+    "description": "Option: show both issues and merge requests."
+  },
+  "listFilterIssue": {
+    "message": "Issues only",
+    "description": "Option: show issues only."
+  },
+  "listFilterMergeRequest": {
+    "message": "Merge requests only",
+    "description": "Option: show merge requests only."
+  },
+  "stateFilterMovedHint": {
+    "message": "The issue/MR state filter (Open only / All states) has moved into the panel; switch it there directly.",
+    "description": "Hint explaining the item state filter moved into the panel."
+  },
+  "rememberSearch": {
+    "message": "Remember list search",
+    "description": "Label for the remember-search checkbox."
+  },
+  "searchScope": {
+    "message": "Search scope",
+    "description": "Label for the search scope select."
+  },
+  "searchScopeTitle": {
+    "message": "Title and number",
+    "description": "Search scope option: match title and number."
+  },
+  "searchScopeNumber": {
+    "message": "Number only",
+    "description": "Search scope option: match exact number only."
+  },
+  "searchScopeHint": {
+    "message": "For a bare number: by default it matches both titles containing that number and items with that exact number; choosing \"Number only\" matches the exact number only.",
+    "description": "Hint explaining bare-number search scope behavior."
+  },
+  "cacheTtl": {
+    "message": "Cache lifetime (seconds)",
+    "description": "Label for the cache TTL input."
+  },
+  "maxItemsPerType": {
+    "message": "Max items per type",
+    "description": "Label for the max-items-per-type input."
+  },
+  "loadingMode": {
+    "message": "Loading mode",
+    "description": "Label for the loading mode select."
+  },
+  "loadingModeParallel": {
+    "message": "Parallel",
+    "description": "Loading mode option: parallel."
+  },
+  "loadingModeSequential": {
+    "message": "Sequential",
+    "description": "Loading mode option: sequential."
+  },
+  "loadingModePaginated": {
+    "message": "Paginated (first batch + load more)",
+    "description": "Loading mode option: paginated."
+  },
+  "maxItemsPerBatch": {
+    "message": "Paginated batch size",
+    "description": "Label for the paginated batch size input."
+  },
+  "requestTimeout": {
+    "message": "Request timeout (milliseconds)",
+    "description": "Label for the request timeout input."
+  },
+  "sectionDisplay": {
+    "message": "Display & interaction",
+    "description": "Fieldset legend for display and interaction options."
+  },
+  "showOnAllRepoPages": {
+    "message": "Show on all repository pages (full-repo mode)",
+    "description": "Label for the show-on-all-repo-pages checkbox."
+  },
+  "showLastRefresh": {
+    "message": "Show last refresh time",
+    "description": "Label for the show-last-refresh checkbox."
+  },
+  "touchDrag": {
+    "message": "Enable touch drag",
+    "description": "Label for the touch-drag checkbox."
+  },
+  "keyboardStep": {
+    "message": "Keyboard step (pixels)",
+    "description": "Label for the keyboard step input."
+  },
+  "sectionAuth": {
+    "message": "Instance authorization",
+    "description": "Fieldset legend for instance authorization."
+  },
+  "authHint": {
+    "message": "Authorize the GitLab instances where issue/MR numbers should be shown. Permissions are granted per instance and can be revoked at any time.",
+    "description": "Hint explaining per-instance authorization."
+  },
+  "grantedOriginsLabel": {
+    "message": "Authorized GitLab instances",
+    "description": "Aria-label for the granted origins list."
+  },
+  "originAddress": {
+    "message": "GitLab instance URL",
+    "description": "Label for the instance URL input."
+  },
+  "grantInstance": {
+    "message": "Authorize instance",
+    "description": "Button text to grant an instance."
+  },
+  "resetDefaults": {
+    "message": "Restore defaults",
+    "description": "Button text to restore default settings."
+  },
+  "saveSettings": {
+    "message": "Save settings",
+    "description": "Submit button text to save settings."
+  },
+  "revoke": {
+    "message": "Revoke",
+    "description": "Button text to revoke an instance authorization."
+  },
+  "revokeAriaLabel": {
+    "message": "Revoke authorization for $1",
+    "description": "Aria-label for a revoke button. $1 = origin."
+  },
+  "revokeFailed": {
+    "message": "Failed to revoke authorization for $1, please retry",
+    "description": "Error when revoking fails. $1 = origin."
+  },
+  "revoked": {
+    "message": "Revoked authorization for $1",
+    "description": "Success message after revoking. $1 = origin."
+  },
+  "noOriginGranted": {
+    "message": "No instances authorized yet",
+    "description": "Empty state for the granted origins list."
+  },
+  "pendingReauth": {
+    "message": "$1 (re-authorization pending)",
+    "description": "List item for a pending re-authorization. $1 = origin."
+  },
+  "originInvalid": {
+    "message": "Invalid instance URL, please enter a full http(s) URL",
+    "description": "Error when the entered origin is invalid."
+  },
+  "originDenied": {
+    "message": "Authorization denied, you can retry in the instance list later",
+    "description": "Message when the permission request is denied."
+  },
+  "originUnsupported": {
+    "message": "Runtime authorization is not supported in this browser",
+    "description": "Message when runtime permission requests are unsupported."
+  },
+  "originGranted": {
+    "message": "Authorized $1",
+    "description": "Success message after granting. $1 = origin."
+  },
+  "settingsSaved": {
+    "message": "Settings saved",
+    "description": "Status message after saving settings."
+  },
+  "settingsSaveFailed": {
+    "message": "Save failed, please check browser storage",
+    "description": "Status message when saving fails."
+  },
+  "settingsReset": {
+    "message": "Default settings restored",
+    "description": "Status message after resetting settings."
+  },
+  "settingsResetFailed": {
+    "message": "Failed to restore default settings",
+    "description": "Status message when resetting fails."
+  },
+  "copyDefault": {
+    "message": "Copy $1",
+    "description": "Tooltip and aria-label for the copy button. $1 = reference text."
+  },
+  "copied": {
+    "message": "Copied",
+    "description": "Feedback after a successful copy."
+  },
+  "copyFailed": {
+    "message": "Copy failed",
+    "description": "Feedback after a failed copy."
+  },
+  "current": {
+    "message": "Current",
+    "description": "Marker for the currently open item."
+  },
+  "groupIssues": {
+    "message": "Issues",
+    "description": "Group heading for issues."
+  },
+  "groupMergeRequests": {
+    "message": "Merge requests",
+    "description": "Group heading for merge requests."
+  },
+  "loadFailed": {
+    "message": "Failed to load",
+    "description": "Status shown when a group fails to load."
+  },
+  "loading": {
+    "message": "Loading",
+    "description": "Status shown while a group is loading."
+  },
+  "emptyOpenIssue": {
+    "message": "No open issues",
+    "description": "Empty state for open issues."
+  },
+  "emptyOpenMr": {
+    "message": "No open MRs",
+    "description": "Empty state for open merge requests."
+  },
+  "emptyIssue": {
+    "message": "No issues",
+    "description": "Empty state for issues."
+  },
+  "emptyMr": {
+    "message": "No MRs",
+    "description": "Empty state for merge requests."
+  },
+  "loadingMore": {
+    "message": "Loading more…",
+    "description": "Button text while loading more items."
+  },
+  "loadMore": {
+    "message": "Load more ($1 loaded)",
+    "description": "Load-more button. $1 = loaded count."
+  },
+  "reachedLimit": {
+    "message": "Reached the limit of $1",
+    "description": "Load-more button when the limit is reached. $1 = limit."
+  },
+  "loadedAll": {
+    "message": "All $1 loaded",
+    "description": "Load-more button when everything is loaded. $1 = count."
+  },
+  "justUpdated": {
+    "message": "Just now",
+    "description": "Relative time when the last refresh was under a minute ago."
+  },
+  "minutesAgo": {
+    "message": "$1 min ago",
+    "description": "Relative time for minutes. $1 = minutes."
+  },
+  "summaryNoMatch": {
+    "message": "No matching open items",
+    "description": "Search summary when nothing matches."
+  },
+  "summaryFound": {
+    "message": "Found $1 open items",
+    "description": "Search summary with count. $1 = count."
+  },
+  "emptyNoMatchOpen": {
+    "message": "No matching open items",
+    "description": "Empty result state for open items."
+  },
+  "emptyNoMatchAll": {
+    "message": "No matching items",
+    "description": "Empty result state for all items."
+  },
+  "panelHeading": {
+    "message": "Open items",
+    "description": "Panel heading."
+  },
+  "refreshAriaLabel": {
+    "message": "Refresh open items list",
+    "description": "Aria-label for the refresh button."
+  },
+  "refreshList": {
+    "message": "Refresh",
+    "description": "Text for the refresh button."
+  },
+  "openSettingsAriaLabel": {
+    "message": "Open settings page",
+    "description": "Aria-label for the settings button."
+  },
+  "settingsTitle": {
+    "message": "Settings",
+    "description": "Title for the settings button."
+  },
+  "searchAriaLabel": {
+    "message": "Search open items",
+    "description": "Aria-label for the search input."
+  },
+  "searchPlaceholder": {
+    "message": "Search number or title",
+    "description": "Placeholder for the search input."
+  },
+  "filterTypeAriaLabel": {
+    "message": "Filter open items by type",
+    "description": "Aria-label for the type filter group."
+  },
+  "filterAll": {
+    "message": "All",
+    "description": "Type filter option: all."
+  },
+  "filterIssue": {
+    "message": "Issue",
+    "description": "Type filter option: issue."
+  },
+  "filterMr": {
+    "message": "MR",
+    "description": "Type filter option: merge request."
+  },
+  "stateLabel": {
+    "message": "State",
+    "description": "Label for the state filter row."
+  },
+  "filterStateAriaLabel": {
+    "message": "Filter items by state",
+    "description": "Aria-label for the state filter group."
+  },
+  "stateOpenOnly": {
+    "message": "Open only",
+    "description": "State filter option: open only."
+  },
+  "stateAll": {
+    "message": "All states",
+    "description": "State filter option: all states."
+  },
+  "lastRefreshPrefix": {
+    "message": "Updated $1",
+    "description": "Prefix for the last refresh time. $1 = relative time."
+  },
+  "loadFailedRetry": {
+    "message": "Failed to load, please retry",
+    "description": "Message when both groups fail to load."
+  },
+  "issueUpdateFailed": {
+    "message": "Issue update failed, MR updated",
+    "description": "Partial failure message when issues fail but MRs succeed."
+  },
+  "mrUpdateFailed": {
+    "message": "MR update failed, Issue updated",
+    "description": "Partial failure message when MRs fail but issues succeed."
+  },
+  "refreshFailedShowLast": {
+    "message": "Refresh failed, showing last results",
+    "description": "Message when refresh fails but cached results are shown."
+  },
+  "loadMoreFailed": {
+    "message": "Failed to load more, please retry",
+    "description": "Message when loading more fails."
+  },
+  "dragAriaLabel": {
+    "message": "Drag to reposition, double-click to reset. Use arrow keys to fine-tune when focused, Home to reset.",
+    "description": "Aria-label for the drag handle."
+  },
+  "dragTooltip": {
+    "message": "Drag to reposition",
+    "description": "Tooltip for the drag handle."
+  },
+  "triggerAriaLabel": {
+    "message": "Open the open issues and MRs list for the current project",
+    "description": "Aria-label for the badge trigger."
+  },
+  "triggerAriaLabelProject": {
+    "message": "Open the open issues and MRs list for the $1 project",
+    "description": "Aria-label for the badge trigger with project path. $1 = project path."
+  }
+}

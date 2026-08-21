@@ -14,6 +14,7 @@
   const CONTENT_SCRIPT_FILES = Object.freeze([
     'src/parser.js',
     'src/config.js',
+    'src/i18n.js',
     'src/ui.js',
     'src/content.js',
   ]);
