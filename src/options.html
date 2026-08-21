@@ -3,100 +3,107 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>__MSG_optionsTitle__</title>
+    <title data-i18n="optionsTitle">__MSG_optionsTitle__</title>
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
     <main class="settings-shell">
       <header class="settings-header">
-        <p class="eyebrow">__MSG_settingsEyebrow__</p>
-        <h1>__MSG_settingsHeading__</h1>
-        <p>__MSG_settingsDescription__</p>
+        <p class="eyebrow" data-i18n="settingsEyebrow">__MSG_settingsEyebrow__</p>
+        <h1 data-i18n="settingsHeading">__MSG_settingsHeading__</h1>
+        <p data-i18n="settingsDescription">__MSG_settingsDescription__</p>
       </header>
       <form id="settings-form" class="settings-form">
         <fieldset>
-          <legend>__MSG_sectionList__</legend>
+          <legend data-i18n="sectionList">__MSG_sectionList__</legend>
           <label>
-            <span>__MSG_defaultListFilter__</span>
+            <span data-i18n="defaultListFilter">__MSG_defaultListFilter__</span>
             <select id="list-filter">
-              <option value="all">__MSG_listFilterAll__</option>
-              <option value="issue">__MSG_listFilterIssue__</option>
-              <option value="merge-request">__MSG_listFilterMergeRequest__</option>
+              <option value="all" data-i18n="listFilterAll">__MSG_listFilterAll__</option>
+              <option value="issue" data-i18n="listFilterIssue">__MSG_listFilterIssue__</option>
+              <option value="merge-request" data-i18n="listFilterMergeRequest">__MSG_listFilterMergeRequest__</option>
             </select>
           </label>
-          <p class="field-hint">__MSG_stateFilterMovedHint__</p>
+          <p class="field-hint" data-i18n="stateFilterMovedHint">__MSG_stateFilterMovedHint__</p>
           <label class="check-row">
             <input id="remember-search" type="checkbox">
-            <span>__MSG_rememberSearch__</span>
+            <span data-i18n="rememberSearch">__MSG_rememberSearch__</span>
           </label>
           <label>
-            <span>__MSG_searchScope__</span>
-            <select id="search-scope">
-              <option value="title">__MSG_searchScopeTitle__</option>
-              <option value="number">__MSG_searchScopeNumber__</option>
+            <span data-i18n="language">__MSG_language__</span>
+            <select id="language-select">
+              <option value="zh_CN">__MSG_languageZhCn__</option>
+              <option value="en">__MSG_languageEn__</option>
             </select>
           </label>
-          <p class="field-hint">__MSG_searchScopeHint__</p>
           <label>
-            <span>__MSG_cacheTtl__</span>
+            <span data-i18n="searchScope">__MSG_searchScope__</span>
+            <select id="search-scope">
+              <option value="title" data-i18n="searchScopeTitle">__MSG_searchScopeTitle__</option>
+              <option value="number" data-i18n="searchScopeNumber">__MSG_searchScopeNumber__</option>
+            </select>
+          </label>
+          <p class="field-hint" data-i18n="searchScopeHint">__MSG_searchScopeHint__</p>
+          <label>
+            <span data-i18n="cacheTtl">__MSG_cacheTtl__</span>
             <input id="cache-ttl" type="number" min="5" max="300" step="1" inputmode="numeric">
           </label>
           <label>
-            <span>__MSG_maxItemsPerType__</span>
+            <span data-i18n="maxItemsPerType">__MSG_maxItemsPerType__</span>
             <input id="max-items" type="number" min="1" max="100" step="1" inputmode="numeric">
           </label>
           <label>
-            <span>__MSG_loadingMode__</span>
+            <span data-i18n="loadingMode">__MSG_loadingMode__</span>
             <select id="loading-mode">
-              <option value="parallel">__MSG_loadingModeParallel__</option>
-              <option value="sequential">__MSG_loadingModeSequential__</option>
-              <option value="paginated">__MSG_loadingModePaginated__</option>
+              <option value="parallel" data-i18n="loadingModeParallel">__MSG_loadingModeParallel__</option>
+              <option value="sequential" data-i18n="loadingModeSequential">__MSG_loadingModeSequential__</option>
+              <option value="paginated" data-i18n="loadingModePaginated">__MSG_loadingModePaginated__</option>
             </select>
           </label>
           <label>
-            <span>__MSG_maxItemsPerBatch__</span>
+            <span data-i18n="maxItemsPerBatch">__MSG_maxItemsPerBatch__</span>
             <input id="max-items-batch" type="number" min="1" max="100" step="1" inputmode="numeric">
           </label>
           <label>
-            <span>__MSG_requestTimeout__</span>
+            <span data-i18n="requestTimeout">__MSG_requestTimeout__</span>
             <input id="request-timeout" type="number" min="1000" max="60000" step="500" inputmode="numeric">
           </label>
         </fieldset>
         <fieldset>
-          <legend>__MSG_sectionDisplay__</legend>
+          <legend data-i18n="sectionDisplay">__MSG_sectionDisplay__</legend>
           <label class="check-row">
             <input id="show-all-repo-pages" type="checkbox">
-            <span>__MSG_showOnAllRepoPages__</span>
+            <span data-i18n="showOnAllRepoPages">__MSG_showOnAllRepoPages__</span>
           </label>
           <label class="check-row">
             <input id="show-last-refresh" type="checkbox">
-            <span>__MSG_showLastRefresh__</span>
+            <span data-i18n="showLastRefresh">__MSG_showLastRefresh__</span>
           </label>
           <label class="check-row">
             <input id="touch-drag" type="checkbox">
-            <span>__MSG_touchDrag__</span>
+            <span data-i18n="touchDrag">__MSG_touchDrag__</span>
           </label>
           <label>
-            <span>__MSG_keyboardStep__</span>
+            <span data-i18n="keyboardStep">__MSG_keyboardStep__</span>
             <input id="keyboard-step" type="number" min="1" max="50" step="1" inputmode="numeric">
           </label>
         </fieldset>
         <fieldset>
-          <legend>__MSG_sectionAuth__</legend>
-          <p class="field-hint">__MSG_authHint__</p>
-          <ul id="granted-origins" class="granted-origins" aria-label="__MSG_grantedOriginsLabel__"></ul>
+          <legend data-i18n="sectionAuth">__MSG_sectionAuth__</legend>
+          <p class="field-hint" data-i18n="authHint">__MSG_authHint__</p>
+          <ul id="granted-origins" class="granted-origins" data-i18n-attr="aria-label:grantedOriginsLabel" aria-label="__MSG_grantedOriginsLabel__"></ul>
           <label>
-            <span>__MSG_originAddress__</span>
+            <span data-i18n="originAddress">__MSG_originAddress__</span>
             <input id="origin-input" type="url" placeholder="https://gitlab.example.com" inputmode="url">
           </label>
           <div class="origin-actions">
-            <button id="grant-origin" type="button" class="secondary">__MSG_grantInstance__</button>
+            <button id="grant-origin" type="button" class="secondary" data-i18n="grantInstance">__MSG_grantInstance__</button>
           </div>
           <p id="origin-status" class="status" role="status" aria-live="polite"></p>
         </fieldset>
         <div class="settings-actions">
-          <button id="reset-settings" type="button" class="secondary">__MSG_resetDefaults__</button>
-          <button type="submit" class="primary">__MSG_saveSettings__</button>
+          <button id="reset-settings" type="button" class="secondary" data-i18n="resetDefaults">__MSG_resetDefaults__</button>
+          <button type="submit" class="primary" data-i18n="saveSettings">__MSG_saveSettings__</button>
         </div>
         <p id="status" class="status" role="status" aria-live="polite"></p>
       </form>

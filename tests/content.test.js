@@ -801,6 +801,7 @@ test('restores a shared stored position and falls back from invalid data', async
     harness.storageCalls.get.map((keys) => [...keys]),
     [
       [CONFIG_STORAGE_KEY],
+      ['language'],
       [CONFIG_STORAGE_KEY],
       [CONFIG_STORAGE_KEY, POSITION_STORAGE_KEY],
     ],
@@ -2944,4 +2945,71 @@ test('full-repo mode transitions between project and detail pages within one pro
 
   assert.equal(renderedText(getBadge(harness.document).label), 'acme/platform');
   assert.ok(!getBadge(harness.document).button.getAttribute('data-copy-text'));
+});
+
+test('initializes in the stored language from storage.sync.language', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123', {
+    storageData: { language: 'zh_CN' },
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.button.getAttribute('aria-label'), '复制 #123');
+  assert.equal(rendered.trigger.getAttribute('aria-label'), '打开 acme/platform 项目的 Open Issue 和 MR 列表');
+  assert.equal(rendered.tooltip.textContent, '复制 #123');
+});
+
+test('re-renders badge and panel strings when storage.sync.language changes', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123');
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), 'Copy #123');
+
+  await harness.dispatchStorageChanged({
+    language: { oldValue: undefined, newValue: 'zh_CN' },
+  });
+  const zh = getBadge(harness.document);
+  assert.equal(zh.button.getAttribute('aria-label'), '复制 #123');
+  assert.equal(zh.trigger.getAttribute('aria-label'), '打开 acme/platform 项目的 Open Issue 和 MR 列表');
+
+  // Opening the panel builds static controls in the active language.
+  zh.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  const zhPanel = getBadge(harness.document);
+  assert.equal(zhPanel.search.getAttribute('placeholder'), '搜索编号或标题');
+  assert.equal(zhPanel.filterAll.textContent, '全部');
+
+  await harness.dispatchStorageChanged({
+    language: { oldValue: 'zh_CN', newValue: 'en' },
+  });
+  const en = getBadge(harness.document);
+  assert.equal(en.button.getAttribute('aria-label'), 'Copy #123');
+  assert.equal(en.trigger.getAttribute('aria-label'), 'Open the open issues and MRs list for the acme/platform project');
+  assert.equal(en.search.getAttribute('placeholder'), 'Search number or title');
+  assert.equal(en.filterAll.textContent, 'All');
+});
+
+test('language override is reset when storage.sync.language is removed', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123', {
+    storageData: { language: 'zh_CN' },
+  });
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), '复制 #123');
+
+  await harness.dispatchStorageChanged({
+    language: { oldValue: 'zh_CN', newValue: undefined },
+  });
+  // With no chrome.i18n in the sandbox, getUILanguage() falls back to 'en'.
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), 'Copy #123');
+});
+
+test('ignores storage changes for unrelated keys', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123');
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), 'Copy #123');
+
+  await harness.dispatchStorageChanged({
+    unrelatedKey: { oldValue: undefined, newValue: 'x' },
+  });
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.button.getAttribute('aria-label'), 'Copy #123');
+  assert.equal(rendered.search.getAttribute('placeholder'), 'Search number or title');
 });

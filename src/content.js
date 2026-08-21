@@ -1140,13 +1140,27 @@
     }
   }
 
-  function renderNavigationPanel(host) {
+  function renderNavigationPanel(host, { rebuildStatic = false } = {}) {
     const { panel, trigger } = getBadgeParts(host);
     if (!panel || !trigger) return;
     const state = getNavigationPanelState();
 
     panel.hidden = !navigation.open;
     trigger.setAttribute('aria-expanded', navigation.open ? 'true' : 'false');
+
+    if (rebuildStatic) {
+      // Manual language switch: drop the once-built static controls so the
+      // build branch below re-creates every string in the new language.
+      for (const selector of [
+        '[data-open-items-header]',
+        '[data-open-items-controls]',
+        '[data-item-state-controls]',
+        '[data-open-items-search-summary]',
+        '[data-open-items-results]',
+      ]) {
+        panel.querySelector(selector)?.remove();
+      }
+    }
 
     if (!panel.querySelector('[data-open-items-search]')) {
       const header = root.document.createElement('div');
@@ -1746,7 +1760,7 @@
     return host;
   }
 
-  function sync({ resetCopy = true, forceRender = false } = {}) {
+  function sync({ resetCopy = true, forceRender = false, rerenderPanel = false } = {}) {
     if (destroyed) return;
 
     if (resetCopy) invalidateCopyOperations();
@@ -1817,7 +1831,7 @@
         button.removeAttribute('data-copy-text');
       }
       if (resetCopy) setDefaultFeedback(host, copyText);
-      renderNavigationPanel(host);
+      renderNavigationPanel(host, { rebuildStatic: rerenderPanel });
     }
     applyPosition(host);
   }
@@ -1881,6 +1895,7 @@
     root.document.removeEventListener('DOMContentLoaded', handleDocumentReady);
     root.document.removeEventListener('pointerdown', handleDocumentPointerDown);
     root.removeEventListener('resize', handleResize);
+    root.chrome?.storage?.onChanged?.removeListener?.(handleStorageLanguageChanged);
     configStore.dispose?.();
     removeBadge();
   }
@@ -1977,6 +1992,69 @@
     sync();
     loadStoredPosition();
     startObserver();
+    loadStoredLanguage();
+    subscribeToLanguageChanges();
+  }
+
+  const LANGUAGE_STORAGE_KEY = 'language';
+
+  function applyLanguageOverride(locale) {
+    if (!i18nApi || typeof i18nApi.setLanguage !== 'function') return false;
+    const normalized = locale === 'zh_CN' || locale === 'en' ? locale : null;
+    const previous = typeof i18nApi.getLanguage === 'function' ? i18nApi.getLanguage() : null;
+    i18nApi.setLanguage(normalized);
+    const next = typeof i18nApi.getLanguage === 'function' ? i18nApi.getLanguage() : normalized;
+    if (previous === next) return false;
+    // Rebuild the panel's static controls so every string renders in the
+    // newly selected language; badge labels update via forceRender.
+    sync({ resetCopy: false, forceRender: true, rerenderPanel: true });
+    // The tooltip is only rewritten by setDefaultFeedback (resetCopy), so
+    // refresh it directly when no copy feedback is in progress.
+    refreshDefaultTooltip();
+    return true;
+  }
+
+  function refreshDefaultTooltip() {
+    const host = root.document.getElementById(HOST_ID);
+    if (!host) return;
+    const { button, tooltip } = getBadgeParts(host);
+    if (!button || button.getAttribute('data-copy-state') !== 'default') return;
+    const copyText = button.getAttribute('data-copy-text');
+    if (!copyText) return;
+    tooltip.textContent = t('copyDefault', [copyText]);
+  }
+
+  function loadStoredLanguage() {
+    const storage = root.chrome?.storage?.sync;
+    if (!storage?.get || typeof i18nApi?.setLanguage !== 'function') return;
+    let applied = false;
+    const apply = (locale) => {
+      if (applied || destroyed) return;
+      applied = true;
+      applyLanguageOverride(locale);
+    };
+    try {
+      // Chrome calls the callback; the test harness resolves a promise.
+      const returned = storage.get([LANGUAGE_STORAGE_KEY], (items) => {
+        apply(items?.[LANGUAGE_STORAGE_KEY]);
+      });
+      if (returned && typeof returned.then === 'function') {
+        returned.then((items) => apply(items?.[LANGUAGE_STORAGE_KEY])).catch(() => apply(undefined));
+      }
+    } catch {
+      apply(undefined);
+    }
+  }
+
+  function handleStorageLanguageChanged(changes, areaName) {
+    if (destroyed || (areaName && areaName !== 'sync')) return;
+    const change = changes?.[LANGUAGE_STORAGE_KEY];
+    if (!change) return;
+    applyLanguageOverride(change.newValue);
+  }
+
+  function subscribeToLanguageChanges() {
+    root.chrome?.storage?.onChanged?.addListener?.(handleStorageLanguageChanged);
   }
 
   const navigationEventListeners = [];

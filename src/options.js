@@ -1,7 +1,7 @@
 (function initializeGitLabReferenceOptions(root, factory) {
   'use strict';
 
-  const api = factory(root.GitLabReferenceConfig, root.GitLabReferenceI18n);
+  const api = factory(root.GitLabReferenceConfig, root.GitLabReferenceI18n, root.chrome);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.GitLabReferenceOptions = api;
   if (!root.document || !root.GitLabReferenceConfig) return;
@@ -19,9 +19,10 @@
     store,
     root.location?.origin || '',
     permissionsApi,
+    root.chrome,
   );
   controller.init();
-})(typeof globalThis === 'undefined' ? this : globalThis, (configApi, i18nApi) => {
+})(typeof globalThis === 'undefined' ? this : globalThis, (configApi, i18nApi, runtime) => {
   'use strict';
 
   const t = (key, substitutions) => (
@@ -29,6 +30,8 @@
       ? i18nApi.getMessage(key, substitutions)
       : key
   );
+
+  const LANGUAGE_STORAGE_KEY = 'language';
 
   const FIELD_IDS = {
     listFilter: 'list-filter',
@@ -96,11 +99,29 @@
     fields.keyboardStep.value = String(effective.keyboardStep);
   }
 
-  function createOptionsController(document, store, origin, permissionController = null) {
+  function renderLocalizedText(document) {
+    if (!document || typeof document.querySelectorAll !== 'function') return;
+    document.querySelectorAll('[data-i18n]').forEach((element) => {
+      const key = element.getAttribute('data-i18n');
+      if (key) element.textContent = t(key);
+    });
+    document.querySelectorAll('[data-i18n-attr]').forEach((element) => {
+      const spec = element.getAttribute('data-i18n-attr');
+      if (!spec) return;
+      const separator = spec.indexOf(':');
+      if (separator < 0) return;
+      const attribute = spec.slice(0, separator);
+      const key = spec.slice(separator + 1);
+      if (attribute && key) element.setAttribute(attribute, t(key));
+    });
+  }
+
+  function createOptionsController(document, store, origin, permissionController = null, runtime = null) {
     const fields = getFields(document);
     const status = document.getElementById('status');
     const form = document.getElementById('settings-form');
     const resetButton = document.getElementById('reset-settings');
+    const languageSelect = document.getElementById('language-select');
     let pending = Promise.resolve();
 
     const grantedList = document.getElementById('granted-origins');
@@ -198,9 +219,48 @@
       status.setAttribute('data-status-kind', isError ? 'error' : 'success');
     }
 
+    function handleLanguageChange() {
+      const locale = languageSelect?.value;
+      pending = Promise.resolve(pending)
+        .then(() => new Promise((resolve) => {
+          if (!runtime?.storage?.sync) {
+            resolve();
+            return;
+          }
+          runtime.storage.sync.set({ language: locale }, () => resolve());
+        }))
+        .then(() => {
+          if (i18nApi && typeof i18nApi.setLanguage === 'function') {
+            i18nApi.setLanguage(locale);
+          }
+          renderLocalizedText(document);
+          if (document?.title && document.querySelector('[data-i18n="optionsTitle"]')) {
+            document.title = t('optionsTitle');
+          }
+        });
+    }
+
     async function init() {
       const effective = await store.load(origin);
       applyEffectiveConfig(fields, effective);
+      if (languageSelect) {
+        const stored = await new Promise((resolve) => {
+          if (!runtime?.storage?.sync) {
+            resolve(null);
+            return;
+          }
+          runtime.storage.sync.get(['language'], (items) => resolve(items?.language ?? null));
+        });
+        const locale = stored === 'zh_CN' || stored === 'en'
+          ? stored
+          : null;
+        if (locale) i18nApi?.setLanguage?.(locale);
+        languageSelect.value = locale || (i18nApi?.getLanguage?.() || 'en');
+      }
+      renderLocalizedText(document);
+      if (document?.title && document.querySelector('[data-i18n="optionsTitle"]')) {
+        document.title = t('optionsTitle');
+      }
       setStatus('');
       refreshOrigins();
       return effective;
@@ -233,6 +293,7 @@
 
     form?.addEventListener('submit', submit);
     resetButton?.addEventListener('click', reset);
+    languageSelect?.addEventListener('change', handleLanguageChange);
 
     return {
       init,

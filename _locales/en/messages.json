@@ -67,6 +67,18 @@
     "message": "For a bare number: by default it matches both titles containing that number and items with that exact number; choosing \"Number only\" matches the exact number only.",
     "description": "Hint explaining bare-number search scope behavior."
   },
+  "language": {
+    "message": "Language",
+    "description": "Label for the language select on the options page."
+  },
+  "languageZhCn": {
+    "message": "简体中文",
+    "description": "Language option: Simplified Chinese."
+  },
+  "languageEn": {
+    "message": "English",
+    "description": "Language option: English."
+  },
   "cacheTtl": {
     "message": "Cache lifetime (seconds)",
     "description": "Label for the cache TTL input."

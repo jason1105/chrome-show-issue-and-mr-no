@@ -30,6 +30,9 @@
     searchScopeTitle: 'Title and number',
     searchScopeNumber: 'Number only',
     searchScopeHint: 'For a bare number: by default it matches both titles containing that number and items with that exact number; choosing "Number only" matches the exact number only.',
+    language: 'Language',
+    languageZhCn: '简体中文',
+    languageEn: 'English',
     cacheTtl: 'Cache lifetime (seconds)',
     maxItemsPerType: 'Max items per type',
     loadingMode: 'Loading mode',
@@ -147,6 +150,9 @@
     searchScopeTitle: '标题与编号',
     searchScopeNumber: '仅编号',
     searchScopeHint: '对于纯数字：默认同时匹配标题包含该数字的条目与编号精确等于该数字的条目；选择「仅编号」则只做精确匹配。',
+    language: '语言',
+    languageZhCn: '简体中文',
+    languageEn: 'English',
     cacheTtl: '缓存时长（秒）',
     maxItemsPerType: '每类最大条目数',
     loadingMode: '加载模式',
@@ -250,10 +256,16 @@
   }
 
   function getMessage(key, substitutions) {
-    // 1. Manual language override (zh_CN mirror or en fallback).
+    // 1. Manual language override: serve the zh_CN mirror or the embedded
+    //    English messages directly. When the override is "en" we must NOT fall
+    //    through to chrome.i18n (it always follows the browser UI language and
+    //    would return Chinese on a zh browser), so resolve it explicitly.
     if (languageOverride === 'zh_CN') {
       const zh = ZH_MESSAGES[key];
       if (zh !== undefined) return interpolate(zh, substitutions);
+    } else if (languageOverride === 'en') {
+      const en = MESSAGES[key];
+      if (en !== undefined) return interpolate(en, substitutions);
     }
     // 2. chrome.i18n follows the browser UI language (default).
     const i18n = root?.chrome?.i18n;

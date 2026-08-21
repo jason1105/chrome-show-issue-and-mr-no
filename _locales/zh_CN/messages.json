@@ -67,6 +67,18 @@
     "message": "对于纯数字：默认同时匹配标题包含该数字的条目与编号精确等于该数字的条目；选择「仅编号」则只做精确匹配。",
     "description": "解释纯数字搜索范围行为的提示。"
   },
+  "language": {
+    "message": "语言",
+    "description": "选项页语言下拉的标签。"
+  },
+  "languageZhCn": {
+    "message": "简体中文",
+    "description": "语言选项：简体中文。"
+  },
+  "languageEn": {
+    "message": "English",
+    "description": "语言选项：English。"
+  },
   "cacheTtl": {
     "message": "缓存时长（秒）",
     "description": "缓存时长输入框标签。"
