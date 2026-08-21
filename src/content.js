@@ -1666,7 +1666,11 @@
     event.preventDefault();
     event.stopPropagation();
     try {
-      root.chrome?.runtime?.openOptionsPage?.();
+      // #20: openOptionsPage is unavailable in content-script contexts (silent
+      // no-op), so open the options page in a new tab via getURL instead. The
+      // click is a user gesture, so the new tab is not popup-blocked.
+      const optionsUrl = root.chrome?.runtime?.getURL?.('src/options.html');
+      if (optionsUrl) root.open(optionsUrl, '_blank');
     } catch {
       // The options page is unreachable only in exotic embedded contexts;
       // the click is still absorbed so the panel stays open.

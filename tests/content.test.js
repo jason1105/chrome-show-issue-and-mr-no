@@ -454,6 +454,7 @@ function createHarness(initialUrl, options = {}) {
   };
 
   const runtimeOpenOptionsCalls = [];
+  const windowOpenCalls = [];
   const i18nMock = {
     getMessage(key, substitutions = []) {
       const entry = zhMessages[key];
@@ -478,11 +479,20 @@ function createHarness(initialUrl, options = {}) {
     chrome: storage ? {
       storage,
       runtime: {
+        // #20: openOptionsPage is not available in content-script contexts;
+        // the shipped code must use getURL + window.open instead.
         openOptionsPage() {
           runtimeOpenOptionsCalls.push(Date.now());
         },
+        getURL(path) {
+          return `chrome-extension://mock-extension-id/${path}`;
+        },
       },
     } : {},
+    open(url, target) {
+      windowOpenCalls.push({ url, target });
+      return null;
+    },
     Date: FakeDate,
     URL,
     get innerWidth() {
@@ -527,6 +537,7 @@ function createHarness(initialUrl, options = {}) {
     storageCalls,
     storageData,
     runtimeOpenOptionsCalls,
+    windowOpenCalls,
     dispatchStorageChanged(changes, areaName = 'sync') {
       return Promise.all([...storageChangeListeners].map((listener) => listener(changes, areaName)));
     },
@@ -1316,15 +1327,20 @@ test('#16 renders a panel-owned state filter row and a settings button in the he
   assert.equal(header.children[2].getAttribute('data-refresh-open-items'), '');
 });
 
-test('#16 clicking the header settings button opens the options page', async () => {
+test('#16/#20 clicking the header settings button opens the options page in a new tab', async () => {
   const harness = createHarness('https://git.example.test/group/app/-/issues/15', {
     fetchResults: [jsonResponse([]), jsonResponse([])],
   });
 
   const rendered = await openAndLoad(harness);
-  assert.equal(harness.runtimeOpenOptionsCalls.length, 0);
+  assert.equal(harness.windowOpenCalls.length, 0);
   rendered.openOptions.dispatchEvent({ type: 'click' });
-  assert.equal(harness.runtimeOpenOptionsCalls.length, 1);
+  // #20: openOptionsPage silently no-ops in content-script contexts, so the
+  // handler must open the options page via getURL + window.open instead.
+  assert.equal(harness.runtimeOpenOptionsCalls.length, 0);
+  assert.equal(harness.windowOpenCalls.length, 1);
+  assert.equal(harness.windowOpenCalls[0].url, 'chrome-extension://mock-extension-id/src/options.html');
+  assert.equal(harness.windowOpenCalls[0].target, '_blank');
 });
 
 test('#16 switching the panel state filter to all refetches with state=all and updates counts', async () => {
