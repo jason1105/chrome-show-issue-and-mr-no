@@ -25,6 +25,9 @@
 
   const FIELD_IDS = {
     listFilter: 'list-filter',
+    // #16: itemStateFilter moved to the in-page panel; the options select was
+    // removed. Kept as a known (nullable) field so the config plumbing stays
+    // intact while the panel owns the value.
     itemStateFilter: 'item-state-filter',
     rememberSearch: 'remember-search',
     cacheTtlSeconds: 'cache-ttl',
@@ -41,7 +44,6 @@
   function buildUserPatch(fields) {
     const patch = {
       listFilter: fields.listFilter.value,
-      itemStateFilter: fields.itemStateFilter.value,
       rememberSearch: Boolean(fields.rememberSearch.checked),
       loadingMode: fields.loadingMode.value,
       showLastRefresh: Boolean(fields.showLastRefresh.checked),
@@ -71,7 +73,7 @@
 
   function applyEffectiveConfig(fields, effective) {
     fields.listFilter.value = effective.listFilter;
-    fields.itemStateFilter.value = effective.itemStateFilter;
+    if (fields.itemStateFilter) fields.itemStateFilter.value = effective.itemStateFilter;
     fields.rememberSearch.checked = effective.rememberSearch;
     fields.cacheTtlSeconds.value = String(effective.cacheTtlSeconds);
     fields.maxItemsPerType.value = String(effective.maxItemsPerType);
