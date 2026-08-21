@@ -198,6 +198,7 @@ async function createWebDriverSession(driverUrl, chromeExecutable, profileDirect
               '--no-default-browser-check',
               '--no-first-run',
               '--window-size=1280,800',
+              '--lang=zh-CN',
               `--user-data-dir=${profileDirectory}`,
             ],
           },

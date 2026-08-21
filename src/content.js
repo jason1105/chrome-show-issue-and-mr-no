@@ -23,6 +23,12 @@
   const parseGitLabProjectPage = root.GitLabReferenceParser?.parseGitLabProjectPage;
   const configApi = root.GitLabReferenceConfig;
   const uiApi = root.GitLabReferenceUi;
+  const i18nApi = root.GitLabReferenceI18n;
+  const t = (key, substitutions) => (
+    i18nApi && typeof i18nApi.getMessage === 'function'
+      ? i18nApi.getMessage(key, substitutions)
+      : key
+  );
   const DEFAULT_POSITION = configApi?.DEFAULT_POSITION || { edge: 'top', ratio: 0.5 };
   const initialOrigin = (() => {
     try {
@@ -832,7 +838,7 @@
     if (!button) return;
 
     button.setAttribute('data-copy-state', 'default');
-    tooltip.textContent = `复制 ${copyText}`;
+    tooltip.textContent = t('copyDefault', [copyText]);
     uiApi.setIcon(icon, 'copy', uiApi.COPY_ICON_PATHS);
     announcement.textContent = '';
   }
@@ -843,9 +849,9 @@
 
     const succeeded = state === 'success';
     button.setAttribute('data-copy-state', state);
-    tooltip.textContent = succeeded ? '已复制' : '复制失败';
+    tooltip.textContent = succeeded ? t('copied') : t('copyFailed');
     uiApi.setIcon(icon, succeeded ? 'success' : 'copy', succeeded ? uiApi.SUCCESS_ICON_PATHS : uiApi.COPY_ICON_PATHS);
-    announcement.textContent = succeeded ? '已复制' : '复制失败';
+    announcement.textContent = succeeded ? t('copied') : t('copyFailed');
 
     clearFeedbackTimer();
     feedbackTimerId = root.setTimeout(() => {
@@ -951,7 +957,7 @@
     if (current) {
       const marker = root.document.createElement('span');
       marker.setAttribute('data-current-marker', '');
-      marker.textContent = '当前';
+      marker.textContent = t('current');
       row.append(marker);
     }
     return row;
@@ -965,7 +971,7 @@
     const heading = root.document.createElement('div');
     heading.setAttribute('data-open-items-group-heading', '');
     const headingLabel = root.document.createElement('span');
-    headingLabel.textContent = name === 'issues' ? 'Issues' : 'Merge requests';
+    headingLabel.textContent = name === 'issues' ? t('groupIssues') : t('groupMergeRequests');
     const count = root.document.createElement('span');
     count.setAttribute('data-open-items-group-count', '');
     count.textContent = String(items?.length || 0);
@@ -976,7 +982,7 @@
       group.setAttribute('data-open-items-state', 'error');
       const status = root.document.createElement('div');
       status.setAttribute('data-open-items-status', '');
-      status.textContent = '无法加载';
+      status.textContent = t('loadFailed');
       group.append(status);
       return group;
     }
@@ -985,7 +991,7 @@
       group.setAttribute('data-open-items-state', 'loading');
       const status = root.document.createElement('div');
       status.setAttribute('data-open-items-status', '');
-      status.textContent = '正在加载';
+      status.textContent = t('loading');
       group.append(status);
       return group;
     }
@@ -994,9 +1000,9 @@
     if (items.length === 0) {
       const status = root.document.createElement('div');
       status.setAttribute('data-open-items-status', '');
-      status.textContent = kind === 'issue' ? '暂无 Open Issue' : '暂无 Open MR';
+      status.textContent = kind === 'issue' ? t('emptyOpenIssue') : t('emptyOpenMr');
       if (getItemStateFilter() === 'all') {
-        status.textContent = kind === 'issue' ? '暂无 Issue' : '暂无 MR';
+        status.textContent = kind === 'issue' ? t('emptyIssue') : t('emptyMr');
       }
       group.append(status);
       return group;
@@ -1015,15 +1021,15 @@
     if (navigation.loadingMore?.[kindKey]) {
       loadMore.setAttribute('aria-busy', 'true');
       loadMore.disabled = true;
-      loadMore.textContent = '正在加载更多…';
+      loadMore.textContent = t('loadingMore');
     } else if (navigation.truncated?.[kindKey] && items.length < limit) {
-      loadMore.textContent = `加载更多（已加载 ${items.length} 条）`;
+      loadMore.textContent = t('loadMore', [String(items.length)]);
       loadMore.addEventListener('click', handleLoadMore);
     } else {
       if (items.length >= limit) {
-        loadMore.textContent = `已达到上限 ${limit} 条`;
+        loadMore.textContent = t('reachedLimit', [String(limit)]);
       } else {
-        loadMore.textContent = `已加载全部 ${items.length} 条`;
+        loadMore.textContent = t('loadedAll', [String(items.length)]);
       }
       loadMore.disabled = true;
     }
@@ -1035,8 +1041,8 @@
     if (!Number.isFinite(timestamp)) return '';
     try {
       const elapsedMs = root.Date.now() - timestamp;
-      if (elapsedMs < 60000) return '刚刚更新';
-      if (elapsedMs < 3600000) return `${Math.floor(elapsedMs / 60000)} 分钟前更新`;
+      if (elapsedMs < 60000) return t('justUpdated');
+      if (elapsedMs < 3600000) return t('minutesAgo', [String(Math.floor(elapsedMs / 60000))]);
       return new root.Date(timestamp).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -1091,8 +1097,7 @@
       const empty = root.document.createElement('div');
       empty.setAttribute('data-open-items-empty', '');
       empty.setAttribute('role', 'status');
-      const stateLabel = allMode ? '' : 'Open ';
-      empty.textContent = `没有匹配的 ${stateLabel}items`;
+      empty.textContent = allMode ? t('emptyNoMatchAll') : t('emptyNoMatchOpen');
       children.push(empty);
       return children;
     }
@@ -1125,8 +1130,8 @@
     const state = getNavigationPanelState();
     total.textContent = String(state.totalCount);
     summary.textContent = state.totalCount === 0
-      ? '没有匹配的 Open items'
-      : `找到 ${state.totalCount} 个 Open items`;
+      ? t('summaryNoMatch')
+      : t('summaryFound', [String(state.totalCount)]);
     renderingNavigationPanel = true;
     try {
       results.replaceChildren(...createNavigationResultChildren(state));
@@ -1135,7 +1140,7 @@
     }
   }
 
-  function renderNavigationPanel(host) {
+  function renderNavigationPanel(host, { rebuildStatic = false } = {}) {
     const { panel, trigger } = getBadgeParts(host);
     if (!panel || !trigger) return;
     const state = getNavigationPanelState();
@@ -1143,13 +1148,27 @@
     panel.hidden = !navigation.open;
     trigger.setAttribute('aria-expanded', navigation.open ? 'true' : 'false');
 
+    if (rebuildStatic) {
+      // Manual language switch: drop the once-built static controls so the
+      // build branch below re-creates every string in the new language.
+      for (const selector of [
+        '[data-open-items-header]',
+        '[data-open-items-controls]',
+        '[data-item-state-controls]',
+        '[data-open-items-search-summary]',
+        '[data-open-items-results]',
+      ]) {
+        panel.querySelector(selector)?.remove();
+      }
+    }
+
     if (!panel.querySelector('[data-open-items-search]')) {
       const header = root.document.createElement('div');
       header.setAttribute('data-open-items-header', '');
       const heading = root.document.createElement('div');
       heading.setAttribute('data-open-items-heading', '');
       const headingText = root.document.createElement('span');
-      headingText.textContent = 'Open items';
+      headingText.textContent = t('panelHeading');
       const total = root.document.createElement('span');
       total.setAttribute('data-open-items-total', '');
       heading.append(headingText, total);
@@ -1157,18 +1176,18 @@
       const refresh = root.document.createElement('button');
       refresh.setAttribute('type', 'button');
       refresh.setAttribute('data-refresh-open-items', '');
-      refresh.setAttribute('aria-label', '刷新 Open items 列表');
+      refresh.setAttribute('aria-label', t('refreshAriaLabel'));
       refresh.append(uiApi.createRefreshIcon());
       const refreshText = root.document.createElement('span');
-      refreshText.textContent = '刷新列表';
+      refreshText.textContent = t('refreshList');
       refresh.append(refreshText);
       refresh.addEventListener('click', handleRefresh);
 
       const settings = root.document.createElement('button');
       settings.setAttribute('type', 'button');
       settings.setAttribute('data-open-options', '');
-      settings.setAttribute('aria-label', '打开设置页');
-      settings.setAttribute('title', '设置');
+      settings.setAttribute('aria-label', t('openSettingsAriaLabel'));
+      settings.setAttribute('title', t('settingsTitle'));
       settings.append(uiApi.createSettingsIcon());
       settings.addEventListener('click', handleOpenOptionsClick);
       header.append(heading, settings, refresh);
@@ -1178,8 +1197,8 @@
       const search = root.document.createElement('input');
       search.setAttribute('type', 'search');
       search.setAttribute('data-open-items-search', '');
-      search.setAttribute('aria-label', '搜索 Open items');
-      search.setAttribute('placeholder', '搜索编号或标题');
+      search.setAttribute('aria-label', t('searchAriaLabel'));
+      search.setAttribute('placeholder', t('searchPlaceholder'));
       search.addEventListener('input', handleSearchInput);
       search.addEventListener('keydown', handleSearchKeyboardEvent);
       search.addEventListener('keypress', handleSearchKeyboardEvent);
@@ -1188,11 +1207,11 @@
       const filters = root.document.createElement('div');
       filters.setAttribute('data-open-items-filters', '');
       filters.setAttribute('role', 'group');
-      filters.setAttribute('aria-label', '筛选 Open items 类型');
+      filters.setAttribute('aria-label', t('filterTypeAriaLabel'));
       for (const [kind, label] of [
-        ['all', '全部'],
-        ['issue', 'Issue'],
-        ['merge-request', 'MR'],
+        ['all', t('filterAll')],
+        ['issue', t('filterIssue')],
+        ['merge-request', t('filterMr')],
       ]) {
         const filter = root.document.createElement('button');
         filter.setAttribute('type', 'button');
@@ -1207,15 +1226,15 @@
       stateControls.setAttribute('data-item-state-controls', '');
       const stateLabel = root.document.createElement('span');
       stateLabel.setAttribute('data-item-state-label', '');
-      stateLabel.textContent = '状态';
+      stateLabel.textContent = t('stateLabel');
       const stateFilters = root.document.createElement('div');
       stateFilters.setAttribute('data-open-items-filters', '');
       stateFilters.setAttribute('data-item-state-filters', '');
       stateFilters.setAttribute('role', 'group');
-      stateFilters.setAttribute('aria-label', '筛选 items 状态');
+      stateFilters.setAttribute('aria-label', t('filterStateAriaLabel'));
       for (const [stateValue, stateText] of [
-        ['open', '仅 Open'],
-        ['all', '全部状态'],
+        ['open', t('stateOpenOnly')],
+        ['all', t('stateAll')],
       ]) {
         const stateFilter = root.document.createElement('button');
         stateFilter.setAttribute('type', 'button');
@@ -1247,14 +1266,14 @@
 
     total.textContent = String(state.totalCount);
     searchSummary.textContent = state.totalCount === 0
-      ? '没有匹配的 Open items'
-      : `找到 ${state.totalCount} 个 Open items`;
+      ? t('summaryNoMatch')
+      : t('summaryFound', [String(state.totalCount)]);
     const existingLastRefresh = heading.querySelector('[data-last-refresh]');
     if (activeConfig.showLastRefresh && Number.isFinite(navigation.lastLoadedAt)) {
       const lastRefresh = existingLastRefresh || root.document.createElement('time');
       lastRefresh.setAttribute('data-last-refresh', '');
       lastRefresh.setAttribute('datetime', new root.Date(navigation.lastLoadedAt).toISOString());
-      lastRefresh.textContent = `更新于 ${formatLastRefresh(navigation.lastLoadedAt)}`;
+      lastRefresh.textContent = t('lastRefreshPrefix', [formatLastRefresh(navigation.lastLoadedAt)]);
       if (!existingLastRefresh) heading.append(lastRefresh);
     } else {
       existingLastRefresh?.remove();
@@ -1301,8 +1320,8 @@
   function buildErrorMessage(issueResult, mergeRequestResult) {
     const failed = [issueResult, mergeRequestResult].filter((result) => result?.status === 'rejected');
     if (failed.length === 0) return '';
-    if (failed.length === 2) return '加载失败，请重试';
-    return issueResult?.status === 'rejected' ? 'Issue 更新失败，MR 已更新' : 'MR 更新失败，Issue 已更新';
+    if (failed.length === 2) return t('loadFailedRetry');
+    return issueResult?.status === 'rejected' ? t('issueUpdateFailed') : t('mrUpdateFailed');
   }
 
   async function loadOpenItems({ force = false } = {}) {
@@ -1394,7 +1413,7 @@
         navigation.issues = navigation.cache.issues;
         navigation.mergeRequests = navigation.cache.mergeRequests;
         navigation.lastLoadedAt = navigation.cache.loadedAt;
-        navigation.message = '刷新失败，显示上次结果';
+        navigation.message = t('refreshFailedShowLast');
       } else {
         navigation.issues = issueResult?.status === 'fulfilled' ? issueResult.value.items : null;
         navigation.mergeRequests = mergeRequestResult?.status === 'fulfilled'
@@ -1459,7 +1478,7 @@
         };
       }
     } catch {
-      navigation.message = '加载更多失败，请重试';
+      navigation.message = t('loadMoreFailed');
     } finally {
       navigation.loadingMore = { ...navigation.loadingMore, [kindKey]: false };
       if (!requestController) return;
@@ -1668,7 +1687,7 @@
     const handle = root.document.createElement('button');
     handle.setAttribute('type', 'button');
     handle.setAttribute('data-drag-handle', '');
-    handle.setAttribute('aria-label', '拖动调整位置，双击恢复默认位置。焦点下可用方向键微调，Home 键恢复默认位置。');
+    handle.setAttribute('aria-label', t('dragAriaLabel'));
     handle.setAttribute('aria-describedby', 'gitlab-reference-drag-tooltip');
     handle.addEventListener('pointerdown', handleDragPointerDown);
     handle.addEventListener('pointermove', handleDragPointerMove);
@@ -1683,7 +1702,7 @@
     handleTooltip.id = 'gitlab-reference-drag-tooltip';
     handleTooltip.setAttribute('data-drag-tooltip', '');
     handleTooltip.setAttribute('role', 'tooltip');
-    handleTooltip.textContent = '拖动调整位置';
+    handleTooltip.textContent = t('dragTooltip');
     handle.append(handleIcon, handleTooltip);
 
     const trigger = root.document.createElement('button');
@@ -1691,7 +1710,7 @@
     trigger.setAttribute('data-reference-trigger', '');
     trigger.setAttribute('aria-expanded', 'false');
     trigger.setAttribute('aria-controls', PANEL_ID);
-    trigger.setAttribute('aria-label', '打开当前项目的 Open Issue 和 MR 列表');
+    trigger.setAttribute('aria-label', t('triggerAriaLabel'));
     trigger.addEventListener('pointerdown', handleNavigationPointerDown);
     trigger.addEventListener('pointercancel', handleNavigationPointerCancel);
     trigger.addEventListener('mouseenter', scheduleNavigationOpen);
@@ -1741,7 +1760,7 @@
     return host;
   }
 
-  function sync({ resetCopy = true, forceRender = false } = {}) {
+  function sync({ resetCopy = true, forceRender = false, rerenderPanel = false } = {}) {
     if (destroyed) return;
 
     if (resetCopy) invalidateCopyOperations();
@@ -1802,17 +1821,17 @@
       else badge.removeAttribute('data-kind');
       trigger.setAttribute(
         'aria-label',
-        `打开 ${reference.projectPath} 项目的 Open Issue 和 MR 列表`,
+        t('triggerAriaLabelProject', [reference.projectPath]),
       );
       if (copyText) {
-        button.setAttribute('aria-label', `复制 ${copyText}`);
+        button.setAttribute('aria-label', t('copyDefault', [copyText]));
         button.setAttribute('data-copy-text', copyText);
       } else {
         button.removeAttribute('aria-label');
         button.removeAttribute('data-copy-text');
       }
       if (resetCopy) setDefaultFeedback(host, copyText);
-      renderNavigationPanel(host);
+      renderNavigationPanel(host, { rebuildStatic: rerenderPanel });
     }
     applyPosition(host);
   }
@@ -1876,6 +1895,7 @@
     root.document.removeEventListener('DOMContentLoaded', handleDocumentReady);
     root.document.removeEventListener('pointerdown', handleDocumentPointerDown);
     root.removeEventListener('resize', handleResize);
+    root.chrome?.storage?.onChanged?.removeListener?.(handleStorageLanguageChanged);
     configStore.dispose?.();
     removeBadge();
   }
@@ -1972,6 +1992,69 @@
     sync();
     loadStoredPosition();
     startObserver();
+    loadStoredLanguage();
+    subscribeToLanguageChanges();
+  }
+
+  const LANGUAGE_STORAGE_KEY = 'language';
+
+  function applyLanguageOverride(locale) {
+    if (!i18nApi || typeof i18nApi.setLanguage !== 'function') return false;
+    const normalized = locale === 'zh_CN' || locale === 'en' ? locale : null;
+    const previous = typeof i18nApi.getLanguage === 'function' ? i18nApi.getLanguage() : null;
+    i18nApi.setLanguage(normalized);
+    const next = typeof i18nApi.getLanguage === 'function' ? i18nApi.getLanguage() : normalized;
+    if (previous === next) return false;
+    // Rebuild the panel's static controls so every string renders in the
+    // newly selected language; badge labels update via forceRender.
+    sync({ resetCopy: false, forceRender: true, rerenderPanel: true });
+    // The tooltip is only rewritten by setDefaultFeedback (resetCopy), so
+    // refresh it directly when no copy feedback is in progress.
+    refreshDefaultTooltip();
+    return true;
+  }
+
+  function refreshDefaultTooltip() {
+    const host = root.document.getElementById(HOST_ID);
+    if (!host) return;
+    const { button, tooltip } = getBadgeParts(host);
+    if (!button || button.getAttribute('data-copy-state') !== 'default') return;
+    const copyText = button.getAttribute('data-copy-text');
+    if (!copyText) return;
+    tooltip.textContent = t('copyDefault', [copyText]);
+  }
+
+  function loadStoredLanguage() {
+    const storage = root.chrome?.storage?.sync;
+    if (!storage?.get || typeof i18nApi?.setLanguage !== 'function') return;
+    let applied = false;
+    const apply = (locale) => {
+      if (applied || destroyed) return;
+      applied = true;
+      applyLanguageOverride(locale);
+    };
+    try {
+      // Chrome calls the callback; the test harness resolves a promise.
+      const returned = storage.get([LANGUAGE_STORAGE_KEY], (items) => {
+        apply(items?.[LANGUAGE_STORAGE_KEY]);
+      });
+      if (returned && typeof returned.then === 'function') {
+        returned.then((items) => apply(items?.[LANGUAGE_STORAGE_KEY])).catch(() => apply(undefined));
+      }
+    } catch {
+      apply(undefined);
+    }
+  }
+
+  function handleStorageLanguageChanged(changes, areaName) {
+    if (destroyed || (areaName && areaName !== 'sync')) return;
+    const change = changes?.[LANGUAGE_STORAGE_KEY];
+    if (!change) return;
+    applyLanguageOverride(change.newValue);
+  }
+
+  function subscribeToLanguageChanges() {
+    root.chrome?.storage?.onChanged?.addListener?.(handleStorageLanguageChanged);
   }
 
   const navigationEventListeners = [];

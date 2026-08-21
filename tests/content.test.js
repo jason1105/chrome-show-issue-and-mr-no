@@ -295,8 +295,14 @@ function jsonResponse(body, options = {}) {
 
 function createHarness(initialUrl, options = {}) {
   const configSource = fs.readFileSync(path.join(__dirname, '../src/config.js'), 'utf8');
+  const i18nSource = fs.readFileSync(path.join(__dirname, '../src/i18n.js'), 'utf8');
   const uiSource = fs.readFileSync(path.join(__dirname, '../src/ui.js'), 'utf8');
   const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
+  // i18n: load the zh_CN dictionary as the single source of truth so content
+  // script assertions keep matching the shipped Chinese strings.
+  const zhMessages = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../_locales/zh_CN/messages.json'), 'utf8'),
+  );
   const windowEvents = new FakeEventTarget();
   const location = { href: initialUrl };
   const animationFrames = new Map();
@@ -448,8 +454,22 @@ function createHarness(initialUrl, options = {}) {
   };
 
   const runtimeOpenOptionsCalls = [];
+  const i18nMock = {
+    getMessage(key, substitutions = []) {
+      const entry = zhMessages[key];
+      if (!entry) return key;
+      let message = entry.message;
+      const values = Array.isArray(substitutions) ? substitutions : [substitutions];
+      message = message.replace(/\$(\d+)/g, (match, index) => {
+        const value = values[Number(index) - 1];
+        return value === undefined ? match : String(value);
+      });
+      return message;
+    },
+  };
   const context = {
     GitLabReferenceParser: parser,
+    GitLabReferenceI18n: i18nMock,
     MutationObserver: FakeMutationObserver,
     document,
     fetch,
@@ -493,6 +513,7 @@ function createHarness(initialUrl, options = {}) {
   };
 
   vm.runInNewContext(configSource, context, { filename: 'src/config.js' });
+  vm.runInNewContext(i18nSource, context, { filename: 'src/i18n.js' });
   vm.runInNewContext(uiSource, context, { filename: 'src/ui.js' });
   vm.runInNewContext(source, context, { filename: 'src/content.js' });
 
@@ -640,10 +661,10 @@ test('renders a segmented Issue reference with an accessible copy button', () =>
   assert.equal(rendered.label.textContent, 'Issue #123');
   assert.equal(rendered.button.tagName, 'BUTTON');
   assert.equal(rendered.button.getAttribute('type'), 'button');
-  assert.equal(rendered.button.getAttribute('aria-label'), '复制 #123');
+  assert.equal(rendered.button.getAttribute('aria-label'), 'Copy #123');
   assert.equal(rendered.button.getAttribute('data-copy-text'), '#123');
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'default');
-  assert.equal(rendered.tooltip.textContent, '复制 #123');
+  assert.equal(rendered.tooltip.textContent, 'Copy #123');
   assert.equal(rendered.button.children.filter((node) => node.tagName === 'SVG').length, 1);
   assert.equal(rendered.icon.getAttribute('data-copy-icon'), 'copy');
   assert.equal(rendered.icon.children.length, 2);
@@ -681,8 +702,8 @@ test('renders an accessible six-dot drag handle with grab affordances', () => {
 
   assert.equal(rendered.handle.tagName, 'BUTTON');
   assert.equal(rendered.handle.getAttribute('type'), 'button');
-  assert.equal(rendered.handle.getAttribute('aria-label'), '拖动调整位置，双击恢复默认位置。焦点下可用方向键微调，Home 键恢复默认位置。');
-  assert.equal(rendered.handleTooltip.textContent, '拖动调整位置');
+  assert.equal(rendered.handle.getAttribute('aria-label'), 'Drag to reposition, double-click to reset. Use arrow keys to fine-tune when focused, Home to reset.');
+  assert.equal(rendered.handleTooltip.textContent, 'Drag to reposition');
   assert.equal(rendered.handleIcon.tagName, 'SVG');
   assert.equal(rendered.handleIcon.querySelectorAll('circle').length, 6);
   assert.match(rendered.style.textContent, /\[data-drag-handle\][\s\S]*cursor:\s*grab/);
@@ -780,6 +801,7 @@ test('restores a shared stored position and falls back from invalid data', async
     harness.storageCalls.get.map((keys) => [...keys]),
     [
       [CONFIG_STORAGE_KEY],
+      ['language'],
       [CONFIG_STORAGE_KEY],
       [CONFIG_STORAGE_KEY, POSITION_STORAGE_KEY],
     ],
@@ -908,18 +930,18 @@ test('copies an Issue reference and restores the default state after 1500ms', as
 
   assert.deepEqual(harness.clipboardWrites, ['#15']);
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'success');
-  assert.equal(rendered.tooltip.textContent, '已复制');
+  assert.equal(rendered.tooltip.textContent, 'Copied');
   assert.equal(rendered.button.children.filter((node) => node.tagName === 'SVG').length, 1);
   assert.equal(rendered.icon.getAttribute('data-copy-icon'), 'success');
   assert.equal(rendered.icon.children.length, 1);
   assert.equal(rendered.icon.children[0].getAttribute('d'), SUCCESS_PATH);
-  assert.equal(rendered.announcement.textContent, '已复制');
+  assert.equal(rendered.announcement.textContent, 'Copied');
 
   harness.advanceTimersBy(1499);
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'success');
   harness.advanceTimersBy(1);
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'default');
-  assert.equal(rendered.tooltip.textContent, '复制 #15');
+  assert.equal(rendered.tooltip.textContent, 'Copy #15');
   assert.equal(rendered.icon.getAttribute('data-copy-icon'), 'copy');
   assert.equal(rendered.icon.children.length, 2);
   assert.equal(rendered.icon.children[0].getAttribute('d'), GITHUB_COPY_PATH);
@@ -936,8 +958,8 @@ test('copies an MR reference using the exclamation-mark format', async () => {
 
   assert.deepEqual(harness.clipboardWrites, ['!14']);
   assert.equal(rendered.label.textContent, 'MR !14');
-  assert.equal(rendered.button.getAttribute('aria-label'), '复制 !14');
-  assert.equal(rendered.tooltip.textContent, '已复制');
+  assert.equal(rendered.button.getAttribute('aria-label'), 'Copy !14');
+  assert.equal(rendered.tooltip.textContent, 'Copied');
 });
 
 test('falls back to execCommand when Clipboard API is unavailable', async () => {
@@ -979,14 +1001,14 @@ test('reports copy failure when both copy mechanisms fail', async () => {
   await harness.flushMicrotasks();
 
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'error');
-  assert.equal(rendered.tooltip.textContent, '复制失败');
+  assert.equal(rendered.tooltip.textContent, 'Copy failed');
   assert.equal(rendered.icon.getAttribute('data-copy-icon'), 'copy');
   assert.equal(rendered.icon.children.length, 2);
-  assert.equal(rendered.announcement.textContent, '复制失败');
+  assert.equal(rendered.announcement.textContent, 'Copy failed');
 
   harness.advanceTimersBy(1500);
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'default');
-  assert.equal(rendered.tooltip.textContent, '复制 #10');
+  assert.equal(rendered.tooltip.textContent, 'Copy #10');
 });
 
 test('contains fallback exceptions and removes the temporary field', async () => {
@@ -1002,8 +1024,8 @@ test('contains fallback exceptions and removes the temporary field', async () =>
   assert.deepEqual(harness.execCommandCalls, ['copy']);
   assert.equal(harness.document.querySelector('textarea'), null);
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'error');
-  assert.equal(rendered.tooltip.textContent, '复制失败');
-  assert.equal(rendered.announcement.textContent, '复制失败');
+  assert.equal(rendered.tooltip.textContent, 'Copy failed');
+  assert.equal(rendered.announcement.textContent, 'Copy failed');
 });
 
 test('updates the reference and clears feedback after SPA navigation', async () => {
@@ -1020,9 +1042,9 @@ test('updates the reference and clears feedback after SPA navigation', async () 
 
   assert.equal(mergeRequest.label.textContent, 'MR !456');
   assert.equal(mergeRequest.button.getAttribute('data-copy-text'), '!456');
-  assert.equal(mergeRequest.button.getAttribute('aria-label'), '复制 !456');
+  assert.equal(mergeRequest.button.getAttribute('aria-label'), 'Copy !456');
   assert.equal(mergeRequest.button.getAttribute('data-copy-state'), 'default');
-  assert.equal(mergeRequest.tooltip.textContent, '复制 !456');
+  assert.equal(mergeRequest.tooltip.textContent, 'Copy !456');
   assert.equal(mergeRequest.announcement.textContent, '');
 });
 
@@ -1059,7 +1081,7 @@ test('ignores stale copy results after SPA navigation', async () => {
   const rendered = getBadge(harness.document);
   assert.equal(rendered.label.textContent, 'MR !3');
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'default');
-  assert.equal(rendered.tooltip.textContent, '复制 !3');
+  assert.equal(rendered.tooltip.textContent, 'Copy !3');
 });
 
 test('keeps the latest copy result when clicks complete out of order', async () => {
@@ -1079,7 +1101,7 @@ test('keeps the latest copy result when clicks complete out of order', async () 
   first.reject(new Error('late rejection'));
   await harness.flushMicrotasks();
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'success');
-  assert.equal(rendered.tooltip.textContent, '已复制');
+  assert.equal(rendered.tooltip.textContent, 'Copied');
   assert.deepEqual(harness.execCommandCalls, []);
 });
 
@@ -1166,7 +1188,7 @@ test('loads Open items with encoded project API URLs, pagination, and current se
   assert.equal(current.tagName, 'SPAN');
   assert.equal(current.getAttribute('aria-current'), 'page');
   assert.equal(current.getAttribute('href'), null);
-  assert.match(renderedText(current), /#15Current issue当前/);
+  assert.match(renderedText(current), /#15Current issueCurrent/);
 
   const fallback = rendered.panel.querySelector('[data-iid="16"]');
   assert.equal(fallback.tagName, 'A');
@@ -1238,9 +1260,9 @@ test('keeps state=opened by default and adjusts empty-state copy in all mode', a
   const openRendered = await openAndLoad(openHarness);
   assert.match(openHarness.fetchCalls[0].url, /state=opened/);
   const openText = renderedText(openRendered.panel);
-  assert.match(openText, /暂无 Open Issue/);
-  assert.match(openText, /暂无 Open MR/);
-  assert.doesNotMatch(openText, /暂无 Open items/);
+  assert.match(openText, /No open issues/);
+  assert.match(openText, /No open MRs/);
+  assert.doesNotMatch(openText, /No open items/);
 
   const allHarness = createHarness('https://git.example.test/group/app/-/issues/15', {
     storageData: {
@@ -1255,9 +1277,9 @@ test('keeps state=opened by default and adjusts empty-state copy in all mode', a
   const allRendered = await openAndLoad(allHarness);
   const allText = renderedText(allRendered.panel);
   assert.match(allHarness.fetchCalls[0].url, /state=all/);
-  assert.match(allText, /暂无 Issue/);
-  assert.match(allText, /暂无 MR/);
-  assert.doesNotMatch(allText, /暂无 Open/);
+  assert.match(allText, /No issues/);
+  assert.match(allText, /No MRs/);
+  assert.doesNotMatch(allText, /No open/);
 });
 
 test('#16 renders a panel-owned state filter row and a settings button in the header', async () => {
@@ -1269,8 +1291,8 @@ test('#16 renders a panel-owned state filter row and a settings button in the he
 
   assert.equal(rendered.stateControls.getAttribute('data-item-state-controls'), '');
   assert.equal(rendered.stateFilterOpen.tagName, 'BUTTON');
-  assert.equal(rendered.stateFilterOpen.textContent, '仅 Open');
-  assert.equal(rendered.stateFilterAll.textContent, '全部状态');
+  assert.equal(rendered.stateFilterOpen.textContent, 'Open only');
+  assert.equal(rendered.stateFilterAll.textContent, 'All states');
   assert.equal(rendered.stateFilterOpen.getAttribute('aria-pressed'), 'true');
   assert.equal(rendered.stateFilterAll.getAttribute('aria-pressed'), 'false');
   // The state row sits between the type-filter controls row and the results.
@@ -1286,7 +1308,7 @@ test('#16 renders a panel-owned state filter row and a settings button in the he
     && resultsIndex > stateIndex);
 
   assert.equal(rendered.openOptions.tagName, 'BUTTON');
-  assert.equal(rendered.openOptions.getAttribute('aria-label'), '打开设置页');
+  assert.equal(rendered.openOptions.getAttribute('aria-label'), 'Open settings page');
   const header = rendered.panel.querySelector('[data-open-items-header]');
   const buttonOrder = [...header.children].map((child) => child.getAttribute('data-open-options') === '' || child.getAttribute('data-refresh-open-items') === '');
   assert.ok(buttonOrder.length >= 3);
@@ -1379,14 +1401,14 @@ test('renders an accessible local search field and type filters', async () => {
 
   assert.equal(rendered.search.tagName, 'INPUT');
   assert.equal(rendered.search.getAttribute('type'), 'search');
-  assert.equal(rendered.search.getAttribute('aria-label'), '搜索 Open items');
-  assert.equal(rendered.search.getAttribute('placeholder'), '搜索编号或标题');
+  assert.equal(rendered.search.getAttribute('aria-label'), 'Search open items');
+  assert.equal(rendered.search.getAttribute('placeholder'), 'Search number or title');
   assert.equal(rendered.searchSummary.getAttribute('aria-live'), 'polite');
   assert.equal(rendered.searchSummary.getAttribute('aria-atomic'), 'true');
   assert.equal(rendered.filterAll.tagName, 'BUTTON');
   assert.equal(rendered.filterIssue.tagName, 'BUTTON');
   assert.equal(rendered.filterMergeRequest.tagName, 'BUTTON');
-  assert.equal(rendered.filterAll.textContent, '全部');
+  assert.equal(rendered.filterAll.textContent, 'All');
   assert.equal(rendered.filterIssue.textContent, 'Issue');
   assert.equal(rendered.filterMergeRequest.textContent, 'MR');
   assert.equal(rendered.filterAll.getAttribute('aria-pressed'), 'true');
@@ -1407,15 +1429,15 @@ test('keeps one live region while announcing filtered result changes', async () 
   let rendered = await openAndLoad(harness);
   const summary = rendered.searchSummary;
 
-  assert.equal(summary.textContent, '找到 3 个 Open items');
+  assert.equal(summary.textContent, 'Found 3 open items');
 
   rendered = searchOpenItems(harness, 'release');
   assert.equal(rendered.searchSummary, summary);
-  assert.equal(summary.textContent, '找到 2 个 Open items');
+  assert.equal(summary.textContent, 'Found 2 open items');
 
   rendered = searchOpenItems(harness, 'missing');
   assert.equal(rendered.searchSummary, summary);
-  assert.equal(summary.textContent, '没有匹配的 Open items');
+  assert.equal(summary.textContent, 'No matching open items');
 });
 
 test('stops search keyboard events before they reach GitLab shortcuts', async () => {
@@ -1699,7 +1721,7 @@ test('shows one clear empty state when loaded items do not match', async () => {
   const rendered = searchOpenItems(harness, 'missing');
   const empty = rendered.panel.querySelector('[data-open-items-empty]');
   assert.equal(empty.getAttribute('role'), 'status');
-  assert.equal(empty.textContent, '没有匹配的 Open items');
+  assert.equal(empty.textContent, 'No matching open items');
   assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 0);
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
 });
@@ -1711,8 +1733,8 @@ test('distinguishes a project with no Open items from filtered no matches', asyn
 
   const rendered = await openAndLoad(harness);
   const openText = renderedText(rendered.panel);
-  assert.match(openText, /暂无 Open Issue/);
-  assert.match(openText, /暂无 Open MR/);
+  assert.match(openText, /No open issues/);
+  assert.match(openText, /No open MRs/);
   assert.equal(rendered.panel.querySelector('[data-open-items-empty]'), null);
   assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 2);
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
@@ -1730,7 +1752,7 @@ test('treats an empty type filter as no matches when another type has open items
   const rendered = filterOpenItems(harness, 'issue');
   const empty = rendered.panel.querySelector('[data-open-items-empty]');
   assert.equal(empty.getAttribute('role'), 'status');
-  assert.equal(empty.textContent, '没有匹配的 Open items');
+  assert.equal(empty.textContent, 'No matching open items');
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
 });
 
@@ -2220,7 +2242,7 @@ test('shows a successful group on initial partial failure without caching it', a
   let rendered = await openAndLoad(harness);
   const groups = rendered.panel.querySelectorAll('[data-open-items-group]');
   assert.equal(groups[0].getAttribute('data-open-items-state'), 'error');
-  assert.match(renderedText(groups[0]), /无法加载/);
+  assert.match(renderedText(groups[0]), /Failed to load/);
   assert.equal(groups[1].getAttribute('data-open-items-state'), 'ready');
   assert.match(renderedText(groups[1]), /Available MR/);
 
@@ -2253,7 +2275,7 @@ test('keeps a complete snapshot when a manual refresh partially fails', async ()
   await harness.flushMicrotasks();
   rendered = getBadge(harness.document);
 
-  assert.match(renderedText(rendered.panel), /刷新失败，显示上次结果/);
+  assert.match(renderedText(rendered.panel), /Refresh failed, showing last results/);
   assert.match(renderedText(rendered.panel), /Stable issue/);
   assert.match(renderedText(rendered.panel), /Stable MR/);
   assert.doesNotMatch(renderedText(rendered.panel), /Uncommitted MR/);
@@ -2479,12 +2501,12 @@ test('aborts a request that exceeds the configured timeout', async () => {
   await harness.flushMicrotasks();
   harness.advanceTimersBy(4999);
   await harness.flushMicrotasks();
-  assert.match(renderedText(getBadge(harness.document).panel), /正在加载/);
+  assert.match(renderedText(getBadge(harness.document).panel), /Loading/);
 
   harness.advanceTimersBy(1);
   await harness.flushMicrotasks();
   const rendered = getBadge(harness.document);
-  assert.doesNotMatch(renderedText(rendered.panel), /正在加载/);
+  assert.doesNotMatch(renderedText(rendered.panel), /Loading/);
 });
 
 test('paginated mode loads the first batch and appends more on demand', async () => {
@@ -2511,7 +2533,7 @@ test('paginated mode loads the first batch and appends more on demand', async ()
   assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 50);
   const loadMore = rendered.panel.querySelector('[data-open-items-load-more="issue"]');
   assert.notEqual(loadMore.disabled, true);
-  assert.match(loadMore.textContent, /加载更多/);
+  assert.match(loadMore.textContent, /Load more/);
 
   loadMore.dispatchEvent({ type: 'click' });
   await harness.flushMicrotasks();
@@ -2520,7 +2542,7 @@ test('paginated mode loads the first batch and appends more on demand', async ()
   const updated = getBadge(harness.document);
   assert.equal(updated.panel.querySelectorAll('[data-open-item]').length, 51);
   const updatedLoadMore = updated.panel.querySelector('[data-open-items-load-more="issue"]');
-  assert.match(updatedLoadMore.textContent, /已加载全部 51 条/);
+  assert.match(updatedLoadMore.textContent, /All 51 loaded/);
   assert.equal(updatedLoadMore.disabled, true);
 });
 
@@ -2560,7 +2582,7 @@ test('paginated mode load-more continues from the stored next page until done', 
   assert.equal(updated.panel.querySelectorAll('[data-open-item]').length, 81);
   const updatedLoadMore = updated.panel.querySelector('[data-open-items-load-more="issue"]');
   assert.equal(updatedLoadMore.disabled, true);
-  assert.match(updatedLoadMore.textContent, /已加载全部 81 条/);
+  assert.match(updatedLoadMore.textContent, /All 81 loaded/);
 });
 
 test('paginated mode with exact batch size and no next page shows all-loaded', async () => {
@@ -2585,7 +2607,7 @@ test('paginated mode with exact batch size and no next page shows all-loaded', a
   assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 50);
   const loadMore = rendered.panel.querySelector('[data-open-items-load-more="issue"]');
   assert.equal(loadMore.disabled, true);
-  assert.match(loadMore.textContent, /已加载全部 50 条/);
+  assert.match(loadMore.textContent, /All 50 loaded/);
 });
 
 test('shows relative last-refresh times', async () => {
@@ -2594,7 +2616,7 @@ test('shows relative last-refresh times', async () => {
   });
 
   const rendered = await openAndLoad(harness);
-  assert.match(rendered.panel.querySelector('[data-last-refresh]').textContent, /刚刚更新/);
+  assert.match(rendered.panel.querySelector('[data-last-refresh]').textContent, /Just now/);
 
   harness.advanceTimersBy(5 * 60 * 1000);
   getBadge(harness.document).panel.querySelector('[data-refresh-open-items]')
@@ -2602,7 +2624,7 @@ test('shows relative last-refresh times', async () => {
   await harness.flushMicrotasks();
   assert.match(
     getBadge(harness.document).panel.querySelector('[data-last-refresh]').textContent,
-    /5 分钟前更新/,
+    /5 min ago/,
   );
 });
 
@@ -2615,7 +2637,7 @@ test('reports a partial failure message when only one kind fails', async () => {
   });
 
   const rendered = await openAndLoad(harness);
-  assert.match(renderedText(rendered.panel), /MR 更新失败，Issue 已更新/);
+  assert.match(renderedText(rendered.panel), /MR update failed, Issue updated/);
   assert.match(renderedText(rendered.panel), /Ok issue/);
 });
 
@@ -2923,4 +2945,71 @@ test('full-repo mode transitions between project and detail pages within one pro
 
   assert.equal(renderedText(getBadge(harness.document).label), 'acme/platform');
   assert.ok(!getBadge(harness.document).button.getAttribute('data-copy-text'));
+});
+
+test('initializes in the stored language from storage.sync.language', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123', {
+    storageData: { language: 'zh_CN' },
+  });
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.button.getAttribute('aria-label'), '复制 #123');
+  assert.equal(rendered.trigger.getAttribute('aria-label'), '打开 acme/platform 项目的 Open Issue 和 MR 列表');
+  assert.equal(rendered.tooltip.textContent, '复制 #123');
+});
+
+test('re-renders badge and panel strings when storage.sync.language changes', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123');
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), 'Copy #123');
+
+  await harness.dispatchStorageChanged({
+    language: { oldValue: undefined, newValue: 'zh_CN' },
+  });
+  const zh = getBadge(harness.document);
+  assert.equal(zh.button.getAttribute('aria-label'), '复制 #123');
+  assert.equal(zh.trigger.getAttribute('aria-label'), '打开 acme/platform 项目的 Open Issue 和 MR 列表');
+
+  // Opening the panel builds static controls in the active language.
+  zh.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+  const zhPanel = getBadge(harness.document);
+  assert.equal(zhPanel.search.getAttribute('placeholder'), '搜索编号或标题');
+  assert.equal(zhPanel.filterAll.textContent, '全部');
+
+  await harness.dispatchStorageChanged({
+    language: { oldValue: 'zh_CN', newValue: 'en' },
+  });
+  const en = getBadge(harness.document);
+  assert.equal(en.button.getAttribute('aria-label'), 'Copy #123');
+  assert.equal(en.trigger.getAttribute('aria-label'), 'Open the open issues and MRs list for the acme/platform project');
+  assert.equal(en.search.getAttribute('placeholder'), 'Search number or title');
+  assert.equal(en.filterAll.textContent, 'All');
+});
+
+test('language override is reset when storage.sync.language is removed', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123', {
+    storageData: { language: 'zh_CN' },
+  });
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), '复制 #123');
+
+  await harness.dispatchStorageChanged({
+    language: { oldValue: 'zh_CN', newValue: undefined },
+  });
+  // With no chrome.i18n in the sandbox, getUILanguage() falls back to 'en'.
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), 'Copy #123');
+});
+
+test('ignores storage changes for unrelated keys', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/123');
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).button.getAttribute('aria-label'), 'Copy #123');
+
+  await harness.dispatchStorageChanged({
+    unrelatedKey: { oldValue: undefined, newValue: 'x' },
+  });
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.button.getAttribute('aria-label'), 'Copy #123');
+  assert.equal(rendered.search.getAttribute('placeholder'), 'Search number or title');
 });

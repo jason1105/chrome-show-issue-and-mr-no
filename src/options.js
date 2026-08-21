@@ -1,7 +1,7 @@
 (function initializeGitLabReferenceOptions(root, factory) {
   'use strict';
 
-  const api = factory(root.GitLabReferenceConfig);
+  const api = factory(root.GitLabReferenceConfig, root.GitLabReferenceI18n, root.chrome);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.GitLabReferenceOptions = api;
   if (!root.document || !root.GitLabReferenceConfig) return;
@@ -19,10 +19,19 @@
     store,
     root.location?.origin || '',
     permissionsApi,
+    root.chrome,
   );
   controller.init();
-})(typeof globalThis === 'undefined' ? this : globalThis, () => {
+})(typeof globalThis === 'undefined' ? this : globalThis, (configApi, i18nApi, runtime) => {
   'use strict';
+
+  const t = (key, substitutions) => (
+    i18nApi && typeof i18nApi.getMessage === 'function'
+      ? i18nApi.getMessage(key, substitutions)
+      : key
+  );
+
+  const LANGUAGE_STORAGE_KEY = 'language';
 
   const FIELD_IDS = {
     listFilter: 'list-filter',
@@ -90,11 +99,29 @@
     fields.keyboardStep.value = String(effective.keyboardStep);
   }
 
-  function createOptionsController(document, store, origin, permissionController = null) {
+  function renderLocalizedText(document) {
+    if (!document || typeof document.querySelectorAll !== 'function') return;
+    document.querySelectorAll('[data-i18n]').forEach((element) => {
+      const key = element.getAttribute('data-i18n');
+      if (key) element.textContent = t(key);
+    });
+    document.querySelectorAll('[data-i18n-attr]').forEach((element) => {
+      const spec = element.getAttribute('data-i18n-attr');
+      if (!spec) return;
+      const separator = spec.indexOf(':');
+      if (separator < 0) return;
+      const attribute = spec.slice(0, separator);
+      const key = spec.slice(separator + 1);
+      if (attribute && key) element.setAttribute(attribute, t(key));
+    });
+  }
+
+  function createOptionsController(document, store, origin, permissionController = null, runtime = null) {
     const fields = getFields(document);
     const status = document.getElementById('status');
     const form = document.getElementById('settings-form');
     const resetButton = document.getElementById('reset-settings');
+    const languageSelect = document.getElementById('language-select');
     let pending = Promise.resolve();
 
     const grantedList = document.getElementById('granted-origins');
@@ -120,17 +147,17 @@
           const revoke = document.createElement('button');
           revoke.type = 'button';
           revoke.className = 'secondary origin-revoke';
-          revoke.textContent = '撤销';
-          revoke.setAttribute('aria-label', `撤销 ${item} 的授权`);
+          revoke.textContent = t('revoke');
+          revoke.setAttribute('aria-label', t('revokeAriaLabel', [item]));
           revoke.addEventListener('click', () => {
             setOriginStatus('');
             permissionController.removeOrigin(item).then((result) => {
               if (!result.ok) {
-                setOriginStatus(`撤销 ${item} 的授权失败，请重试`, true);
+                setOriginStatus(t('revokeFailed', [item]), true);
                 refreshOrigins();
                 return;
               }
-              setOriginStatus(`已撤销 ${item} 的授权`);
+              setOriginStatus(t('revoked', [item]));
               refreshOrigins();
             });
           });
@@ -141,14 +168,14 @@
       if (!origins.length) {
         const li = document.createElement('li');
         li.className = 'origin-empty';
-        li.textContent = '尚未授权任何实例';
+        li.textContent = t('noOriginGranted');
         grantedList.appendChild(li);
       }
       for (const item of pendingOrigins) {
         if (origins.includes(item)) continue;
         const li = document.createElement('li');
         li.className = 'origin-pending';
-        li.textContent = `${item}（待重新授权）`;
+        li.textContent = t('pendingReauth', [item]);
         grantedList.appendChild(li);
       }
     }
@@ -170,16 +197,16 @@
       permissionController.requestOrigin(originInput.value).then((result) => {
         if (!result.ok) {
           if (result.reason === 'invalid-origin') {
-            setOriginStatus('实例地址无效，请输入完整的 http(s) 地址', true);
+            setOriginStatus(t('originInvalid'), true);
           } else if (result.reason === 'denied') {
-            setOriginStatus('授权被拒绝，可稍后在实例列表中重试', true);
+            setOriginStatus(t('originDenied'), true);
           } else {
-            setOriginStatus('当前浏览器不支持运行时授权', true);
+            setOriginStatus(t('originUnsupported'), true);
           }
           return;
         }
         originInput.value = '';
-        setOriginStatus(`已授权 ${result.origin}`);
+        setOriginStatus(t('originGranted', [result.origin]));
         refreshOrigins();
       });
     }
@@ -192,9 +219,48 @@
       status.setAttribute('data-status-kind', isError ? 'error' : 'success');
     }
 
+    function handleLanguageChange() {
+      const locale = languageSelect?.value;
+      pending = Promise.resolve(pending)
+        .then(() => new Promise((resolve) => {
+          if (!runtime?.storage?.sync) {
+            resolve();
+            return;
+          }
+          runtime.storage.sync.set({ language: locale }, () => resolve());
+        }))
+        .then(() => {
+          if (i18nApi && typeof i18nApi.setLanguage === 'function') {
+            i18nApi.setLanguage(locale);
+          }
+          renderLocalizedText(document);
+          if (document?.title && document.querySelector('[data-i18n="optionsTitle"]')) {
+            document.title = t('optionsTitle');
+          }
+        });
+    }
+
     async function init() {
       const effective = await store.load(origin);
       applyEffectiveConfig(fields, effective);
+      if (languageSelect) {
+        const stored = await new Promise((resolve) => {
+          if (!runtime?.storage?.sync) {
+            resolve(null);
+            return;
+          }
+          runtime.storage.sync.get(['language'], (items) => resolve(items?.language ?? null));
+        });
+        const locale = stored === 'zh_CN' || stored === 'en'
+          ? stored
+          : null;
+        if (locale) i18nApi?.setLanguage?.(locale);
+        languageSelect.value = locale || (i18nApi?.getLanguage?.() || 'en');
+      }
+      renderLocalizedText(document);
+      if (document?.title && document.querySelector('[data-i18n="optionsTitle"]')) {
+        document.title = t('optionsTitle');
+      }
       setStatus('');
       refreshOrigins();
       return effective;
@@ -206,10 +272,10 @@
       pending = store.save(patch, origin)
         .then((effective) => {
           applyEffectiveConfig(fields, effective);
-          setStatus('设置已保存');
+          setStatus(t('settingsSaved'));
         })
         .catch(() => {
-          setStatus('保存失败，请检查浏览器存储空间', true);
+          setStatus(t('settingsSaveFailed'), true);
         });
     }
 
@@ -218,15 +284,16 @@
       pending = store.reset(origin)
         .then((effective) => {
           applyEffectiveConfig(fields, effective);
-          setStatus('已恢复默认设置');
+          setStatus(t('settingsReset'));
         })
         .catch(() => {
-          setStatus('恢复默认设置失败', true);
+          setStatus(t('settingsResetFailed'), true);
         });
     }
 
     form?.addEventListener('submit', submit);
     resetButton?.addEventListener('click', reset);
+    languageSelect?.addEventListener('change', handleLanguageChange);
 
     return {
       init,

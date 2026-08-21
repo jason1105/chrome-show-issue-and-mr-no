@@ -13,6 +13,21 @@ test('declares a loadable Manifest V3 extension', () => {
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 });
 
+test('declares a default locale with matching _locales messages', () => {
+  assert.equal(manifest.default_locale, 'en');
+  const enPath = path.join(projectRoot, '_locales', 'en', 'messages.json');
+  const zhPath = path.join(projectRoot, '_locales', 'zh_CN', 'messages.json');
+  assert.equal(fs.statSync(enPath).isFile(), true);
+  assert.equal(fs.statSync(zhPath).isFile(), true);
+
+  const en = JSON.parse(fs.readFileSync(enPath, 'utf8'));
+  const zh = JSON.parse(fs.readFileSync(zhPath, 'utf8'));
+  assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort(), 'en and zh_CN must expose the same message keys');
+  for (const [key, value] of Object.entries(en)) {
+    assert.equal(typeof value.message, 'string', `en message "${key}" must be a string`);
+  }
+});
+
 test('requests optional host permissions and dynamically registers scripts', () => {
   assert.equal(manifest.content_scripts, undefined);
   assert.deepEqual(manifest.permissions || [], ['storage', 'scripting']);
@@ -23,10 +38,10 @@ test('requests optional host permissions and dynamically registers scripts', () 
   assert.equal(fs.statSync(path.join(projectRoot, 'src/permissions.js')).isFile(), true);
 });
 
-test('registers content scripts in parser → config → ui → content order at document_start', () => {
+test('registers content scripts in parser → config → i18n → ui → content order at document_start', () => {
   const permissionsSource = fs.readFileSync(path.join(projectRoot, 'src/permissions.js'), 'utf8');
-  assert.match(permissionsSource, /CONTENT_SCRIPT_FILES[\s\S]*?'src\/parser\.js'[\s\S]*?'src\/config\.js'[\s\S]*?'src\/ui\.js'[\s\S]*?'src\/content\.js'/);
-  const order = ['src/parser.js', 'src/config.js', 'src/ui.js', 'src/content.js']
+  assert.match(permissionsSource, /CONTENT_SCRIPT_FILES[\s\S]*?'src\/parser\.js'[\s\S]*?'src\/config\.js'[\s\S]*?'src\/i18n\.js'[\s\S]*?'src\/ui\.js'[\s\S]*?'src\/content\.js'/);
+  const order = ['src/parser.js', 'src/config.js', 'src/i18n.js', 'src/ui.js', 'src/content.js']
     .map((name) => permissionsSource.indexOf(`'${name}'`));
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'script files must be listed in order');
   assert.match(permissionsSource, /document_start/);
@@ -48,6 +63,7 @@ test('provides a keyboard-accessible settings page', () => {
   assert.match(optionsHtml, /<form id="settings-form"/);
   assert.match(optionsHtml, /<script src="config\.js"><\/script>/);
   assert.match(optionsHtml, /<script src="permissions\.js"><\/script>/);
+  assert.match(optionsHtml, /<script src="i18n\.js"><\/script>/);
   assert.match(optionsHtml, /<script src="options\.js"><\/script>/);
   assert.match(optionsHtml, /id="origin-input"/);
   assert.match(optionsHtml, /id="grant-origin"/);

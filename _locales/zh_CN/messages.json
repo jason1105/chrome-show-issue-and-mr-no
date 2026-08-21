@@ -1,0 +1,406 @@
+{
+  "extName": {
+    "message": "GitLab Issue/MR 编号图钉",
+    "description": "扩展名称（manifest name）。"
+  },
+  "extDescription": {
+    "message": "滚动页面时保持当前 GitLab Issue 或 Merge Request 编号始终可见。",
+    "description": "扩展描述（manifest description）。"
+  },
+  "optionsTitle": {
+    "message": "GitLab Issue/MR 编号图钉设置",
+    "description": "选项页浏览器标签标题。"
+  },
+  "settingsEyebrow": {
+    "message": "GitLab Issue/MR 编号图钉",
+    "description": "选项页眉显示的扩展名称。"
+  },
+  "settingsHeading": {
+    "message": "设置",
+    "description": "选项页主标题。"
+  },
+  "settingsDescription": {
+    "message": "调整列表、缓存与交互控制偏好。",
+    "description": "选项页标题下的说明段落。"
+  },
+  "sectionList": {
+    "message": "列表",
+    "description": "列表相关选项的字段集图例。"
+  },
+  "defaultListFilter": {
+    "message": "默认列表筛选",
+    "description": "默认列表筛选下拉标签。"
+  },
+  "listFilterAll": {
+    "message": "Issue 与合并请求",
+    "description": "选项：同时显示 Issue 和合并请求。"
+  },
+  "listFilterIssue": {
+    "message": "仅 Issue",
+    "description": "选项：仅显示 Issue。"
+  },
+  "listFilterMergeRequest": {
+    "message": "仅合并请求",
+    "description": "选项：仅显示合并请求。"
+  },
+  "stateFilterMovedHint": {
+    "message": "Issue/MR 状态筛选（仅 Open / 全部状态）已移动到面板中，请在面板内直接切换。",
+    "description": "说明条目状态筛选已移入面板的提示。"
+  },
+  "rememberSearch": {
+    "message": "记住列表搜索",
+    "description": "记住搜索复选框的标签。"
+  },
+  "searchScope": {
+    "message": "搜索范围",
+    "description": "搜索范围下拉标签。"
+  },
+  "searchScopeTitle": {
+    "message": "标题与编号",
+    "description": "搜索范围选项：同时匹配标题与编号。"
+  },
+  "searchScopeNumber": {
+    "message": "仅编号",
+    "description": "搜索范围选项：仅精确匹配编号。"
+  },
+  "searchScopeHint": {
+    "message": "对于纯数字：默认同时匹配标题包含该数字的条目与编号精确等于该数字的条目；选择「仅编号」则只做精确匹配。",
+    "description": "解释纯数字搜索范围行为的提示。"
+  },
+  "language": {
+    "message": "语言",
+    "description": "选项页语言下拉的标签。"
+  },
+  "languageZhCn": {
+    "message": "简体中文",
+    "description": "语言选项：简体中文。"
+  },
+  "languageEn": {
+    "message": "English",
+    "description": "语言选项：English。"
+  },
+  "cacheTtl": {
+    "message": "缓存时长（秒）",
+    "description": "缓存时长输入框标签。"
+  },
+  "maxItemsPerType": {
+    "message": "每类最大条目数",
+    "description": "每类最大条目数输入框标签。"
+  },
+  "loadingMode": {
+    "message": "加载模式",
+    "description": "加载模式下拉标签。"
+  },
+  "loadingModeParallel": {
+    "message": "并行",
+    "description": "加载模式选项：并行。"
+  },
+  "loadingModeSequential": {
+    "message": "顺序",
+    "description": "加载模式选项：顺序。"
+  },
+  "loadingModePaginated": {
+    "message": "分页（首批 + 加载更多）",
+    "description": "加载模式选项：分页。"
+  },
+  "maxItemsPerBatch": {
+    "message": "分页批次大小",
+    "description": "分页批次大小输入框标签。"
+  },
+  "requestTimeout": {
+    "message": "请求超时（毫秒）",
+    "description": "请求超时输入框标签。"
+  },
+  "sectionDisplay": {
+    "message": "显示与交互",
+    "description": "显示与交互选项的字段集图例。"
+  },
+  "showOnAllRepoPages": {
+    "message": "在所有仓库页面显示（全仓库模式）",
+    "description": "全仓库模式复选框标签。"
+  },
+  "showLastRefresh": {
+    "message": "显示上次刷新时间",
+    "description": "显示上次刷新时间复选框标签。"
+  },
+  "touchDrag": {
+    "message": "启用触屏拖拽",
+    "description": "启用触屏拖拽复选框标签。"
+  },
+  "keyboardStep": {
+    "message": "键盘步长（像素）",
+    "description": "键盘步长输入框标签。"
+  },
+  "sectionAuth": {
+    "message": "实例授权",
+    "description": "实例授权字段集图例。"
+  },
+  "authHint": {
+    "message": "授权需要显示 Issue/MR 编号的 GitLab 实例。权限按实例单独授予，可随时撤销。",
+    "description": "解释按实例授权的提示。"
+  },
+  "grantedOriginsLabel": {
+    "message": "已授权的 GitLab 实例",
+    "description": "已授权实例列表的 aria 标签。"
+  },
+  "originAddress": {
+    "message": "GitLab 实例 URL",
+    "description": "实例 URL 输入框标签。"
+  },
+  "grantInstance": {
+    "message": "授权实例",
+    "description": "授权实例按钮文本。"
+  },
+  "resetDefaults": {
+    "message": "恢复默认设置",
+    "description": "恢复默认设置按钮文本。"
+  },
+  "saveSettings": {
+    "message": "保存设置",
+    "description": "保存设置提交按钮文本。"
+  },
+  "revoke": {
+    "message": "撤销",
+    "description": "撤销实例授权按钮文本。"
+  },
+  "revokeAriaLabel": {
+    "message": "撤销对 $1 的授权",
+    "description": "撤销按钮的 aria 标签。$1 = 实例地址。"
+  },
+  "revokeFailed": {
+    "message": "撤销 $1 授权失败，请重试",
+    "description": "撤销失败的错误提示。$1 = 实例地址。"
+  },
+  "revoked": {
+    "message": "已撤销 $1 的授权",
+    "description": "撤销成功提示。$1 = 实例地址。"
+  },
+  "noOriginGranted": {
+    "message": "尚未授权任何实例",
+    "description": "已授权实例列表的空状态。"
+  },
+  "pendingReauth": {
+    "message": "$1（待重新授权）",
+    "description": "待重新授权列表项。$1 = 实例地址。"
+  },
+  "originInvalid": {
+    "message": "实例 URL 无效，请输入完整的 http(s) URL",
+    "description": "输入的实例地址无效时的错误提示。"
+  },
+  "originDenied": {
+    "message": "授权被拒绝，稍后可在实例列表中重试",
+    "description": "权限请求被拒绝时的提示。"
+  },
+  "originUnsupported": {
+    "message": "当前浏览器不支持运行时授权",
+    "description": "运行时权限请求不受支持时的提示。"
+  },
+  "originGranted": {
+    "message": "已授权 $1",
+    "description": "授权成功提示。$1 = 实例地址。"
+  },
+  "settingsSaved": {
+    "message": "设置已保存",
+    "description": "保存设置后的状态提示。"
+  },
+  "settingsSaveFailed": {
+    "message": "保存失败，请检查浏览器存储",
+    "description": "保存失败时的状态提示。"
+  },
+  "settingsReset": {
+    "message": "已恢复默认设置",
+    "description": "重置设置后的状态提示。"
+  },
+  "settingsResetFailed": {
+    "message": "恢复默认设置失败",
+    "description": "重置失败时的状态提示。"
+  },
+  "copyDefault": {
+    "message": "复制 $1",
+    "description": "复制按钮的提示与 aria 标签。$1 = 引用文本。"
+  },
+  "copied": {
+    "message": "已复制",
+    "description": "复制成功后的反馈。"
+  },
+  "copyFailed": {
+    "message": "复制失败",
+    "description": "复制失败后的反馈。"
+  },
+  "current": {
+    "message": "当前",
+    "description": "当前打开条目的标记。"
+  },
+  "groupIssues": {
+    "message": "Issue",
+    "description": "Issue 分组标题。"
+  },
+  "groupMergeRequests": {
+    "message": "合并请求",
+    "description": "合并请求分组标题。"
+  },
+  "loadFailed": {
+    "message": "无法加载",
+    "description": "分组加载失败时显示的状态。"
+  },
+  "loading": {
+    "message": "正在加载",
+    "description": "分组加载中显示的状态。"
+  },
+  "emptyOpenIssue": {
+    "message": "暂无 Open Issue",
+    "description": "Open Issue 的空状态。"
+  },
+  "emptyOpenMr": {
+    "message": "暂无 Open MR",
+    "description": "Open 合并请求的空状态。"
+  },
+  "emptyIssue": {
+    "message": "暂无 Issue",
+    "description": "Issue 的空状态。"
+  },
+  "emptyMr": {
+    "message": "暂无 MR",
+    "description": "合并请求的空状态。"
+  },
+  "loadingMore": {
+    "message": "正在加载更多…",
+    "description": "加载更多时的按钮文本。"
+  },
+  "loadMore": {
+    "message": "加载更多（已加载 $1 条）",
+    "description": "加载更多按钮。$1 = 已加载数量。"
+  },
+  "reachedLimit": {
+    "message": "已达到上限 $1 条",
+    "description": "达到上限时的加载更多按钮。$1 = 上限值。"
+  },
+  "loadedAll": {
+    "message": "已加载全部 $1 条",
+    "description": "全部加载完成时的加载更多按钮。$1 = 数量。"
+  },
+  "justUpdated": {
+    "message": "刚刚更新",
+    "description": "上次刷新不足一分钟时的相对时间。"
+  },
+  "minutesAgo": {
+    "message": "$1 分钟前更新",
+    "description": "按分钟计的相对时间。$1 = 分钟数。"
+  },
+  "summaryNoMatch": {
+    "message": "没有匹配的 Open items",
+    "description": "无匹配结果时的搜索摘要。"
+  },
+  "summaryFound": {
+    "message": "找到 $1 个 Open items",
+    "description": "带数量的搜索摘要。$1 = 数量。"
+  },
+  "emptyNoMatchOpen": {
+    "message": "没有匹配的 Open items",
+    "description": "Open items 的空结果状态。"
+  },
+  "emptyNoMatchAll": {
+    "message": "没有匹配的 items",
+    "description": "全部条目的空结果状态。"
+  },
+  "panelHeading": {
+    "message": "Open items",
+    "description": "面板标题。"
+  },
+  "refreshAriaLabel": {
+    "message": "刷新 Open items 列表",
+    "description": "刷新按钮的 aria 标签。"
+  },
+  "refreshList": {
+    "message": "刷新列表",
+    "description": "刷新按钮文本。"
+  },
+  "openSettingsAriaLabel": {
+    "message": "打开设置页",
+    "description": "设置按钮的 aria 标签。"
+  },
+  "settingsTitle": {
+    "message": "设置",
+    "description": "设置按钮标题。"
+  },
+  "searchAriaLabel": {
+    "message": "搜索 Open items",
+    "description": "搜索输入框的 aria 标签。"
+  },
+  "searchPlaceholder": {
+    "message": "搜索编号或标题",
+    "description": "搜索输入框占位符。"
+  },
+  "filterTypeAriaLabel": {
+    "message": "筛选 Open items 类型",
+    "description": "类型筛选分组的 aria 标签。"
+  },
+  "filterAll": {
+    "message": "全部",
+    "description": "类型筛选选项：全部。"
+  },
+  "filterIssue": {
+    "message": "Issue",
+    "description": "类型筛选选项：Issue。"
+  },
+  "filterMr": {
+    "message": "MR",
+    "description": "类型筛选选项：合并请求。"
+  },
+  "stateLabel": {
+    "message": "状态",
+    "description": "状态筛选行标签。"
+  },
+  "filterStateAriaLabel": {
+    "message": "筛选 items 状态",
+    "description": "状态筛选分组的 aria 标签。"
+  },
+  "stateOpenOnly": {
+    "message": "仅 Open",
+    "description": "状态筛选选项：仅 Open。"
+  },
+  "stateAll": {
+    "message": "全部状态",
+    "description": "状态筛选选项：全部状态。"
+  },
+  "lastRefreshPrefix": {
+    "message": "更新于 $1",
+    "description": "上次刷新时间前缀。$1 = 相对时间。"
+  },
+  "loadFailedRetry": {
+    "message": "加载失败，请重试",
+    "description": "两组都加载失败时的提示。"
+  },
+  "issueUpdateFailed": {
+    "message": "Issue 更新失败，MR 已更新",
+    "description": "Issue 失败但合并请求成功的部分失败提示。"
+  },
+  "mrUpdateFailed": {
+    "message": "MR 更新失败，Issue 已更新",
+    "description": "合并请求失败但 Issue 成功的部分失败提示。"
+  },
+  "refreshFailedShowLast": {
+    "message": "刷新失败，显示上次结果",
+    "description": "刷新失败但显示缓存结果时的提示。"
+  },
+  "loadMoreFailed": {
+    "message": "加载更多失败，请重试",
+    "description": "加载更多失败时的提示。"
+  },
+  "dragAriaLabel": {
+    "message": "拖动调整位置，双击恢复默认位置。焦点下可用方向键微调，Home 键恢复默认位置。",
+    "description": "拖拽手柄的 aria 标签。"
+  },
+  "dragTooltip": {
+    "message": "拖动调整位置",
+    "description": "拖拽手柄的提示。"
+  },
+  "triggerAriaLabel": {
+    "message": "打开当前项目的 Open Issue 和 MR 列表",
+    "description": "徽章触发器的 aria 标签。"
+  },
+  "triggerAriaLabelProject": {
+    "message": "打开 $1 项目的 Open Issue 和 MR 列表",
+    "description": "带项目路径的徽章触发器 aria 标签。$1 = 项目路径。"
+  }
+}
