@@ -447,6 +447,7 @@ function createHarness(initialUrl, options = {}) {
     },
   };
 
+  const runtimeOpenOptionsCalls = [];
   const context = {
     GitLabReferenceParser: parser,
     MutationObserver: FakeMutationObserver,
@@ -454,7 +455,14 @@ function createHarness(initialUrl, options = {}) {
     fetch,
     location,
     navigator: clipboard ? { clipboard } : {},
-    chrome: storage ? { storage } : {},
+    chrome: storage ? {
+      storage,
+      runtime: {
+        openOptionsPage() {
+          runtimeOpenOptionsCalls.push(Date.now());
+        },
+      },
+    } : {},
     Date: FakeDate,
     URL,
     get innerWidth() {
@@ -497,6 +505,7 @@ function createHarness(initialUrl, options = {}) {
     fetchCalls,
     storageCalls,
     storageData,
+    runtimeOpenOptionsCalls,
     dispatchStorageChanged(changes, areaName = 'sync') {
       return Promise.all([...storageChangeListeners].map((listener) => listener(changes, areaName)));
     },
@@ -564,6 +573,10 @@ function getBadge(document) {
     filterAll: shadow?.querySelector('[data-open-items-filter="all"]') || null,
     filterIssue: shadow?.querySelector('[data-open-items-filter="issue"]') || null,
     filterMergeRequest: shadow?.querySelector('[data-open-items-filter="merge-request"]') || null,
+    stateControls: shadow?.querySelector('[data-item-state-controls]') || null,
+    stateFilterOpen: shadow?.querySelector('[data-item-state-filter="open"]') || null,
+    stateFilterAll: shadow?.querySelector('[data-item-state-filter="all"]') || null,
+    openOptions: shadow?.querySelector('[data-open-options]') || null,
     style: shadow?.querySelector('style') || null,
   };
 }
@@ -1245,6 +1258,116 @@ test('keeps state=opened by default and adjusts empty-state copy in all mode', a
   assert.match(allText, /暂无 Issue/);
   assert.match(allText, /暂无 MR/);
   assert.doesNotMatch(allText, /暂无 Open/);
+});
+
+test('#16 renders a panel-owned state filter row and a settings button in the header', async () => {
+  const harness = createHarness('https://git.example.test/group/app/-/issues/15', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+
+  const rendered = await openAndLoad(harness);
+
+  assert.equal(rendered.stateControls.getAttribute('data-item-state-controls'), '');
+  assert.equal(rendered.stateFilterOpen.tagName, 'BUTTON');
+  assert.equal(rendered.stateFilterOpen.textContent, '仅 Open');
+  assert.equal(rendered.stateFilterAll.textContent, '全部状态');
+  assert.equal(rendered.stateFilterOpen.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.stateFilterAll.getAttribute('aria-pressed'), 'false');
+  // The state row sits between the type-filter controls row and the results.
+  const panelChildren = [...rendered.panel.children];
+  const controlsIndex = panelChildren.findIndex(
+    (node) => node.getAttribute('data-open-items-controls') !== null,
+  );
+  const stateIndex = panelChildren.indexOf(rendered.stateControls);
+  const resultsIndex = panelChildren.findIndex(
+    (node) => node.getAttribute('data-open-items-results') !== null,
+  );
+  assert.ok(controlsIndex >= 0 && stateIndex === controlsIndex + 1
+    && resultsIndex > stateIndex);
+
+  assert.equal(rendered.openOptions.tagName, 'BUTTON');
+  assert.equal(rendered.openOptions.getAttribute('aria-label'), '打开设置页');
+  const header = rendered.panel.querySelector('[data-open-items-header]');
+  const buttonOrder = [...header.children].map((child) => child.getAttribute('data-open-options') === '' || child.getAttribute('data-refresh-open-items') === '');
+  assert.ok(buttonOrder.length >= 3);
+  assert.equal(header.children[1].getAttribute('data-open-options'), '');
+  assert.equal(header.children[2].getAttribute('data-refresh-open-items'), '');
+});
+
+test('#16 clicking the header settings button opens the options page', async () => {
+  const harness = createHarness('https://git.example.test/group/app/-/issues/15', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(harness.runtimeOpenOptionsCalls.length, 0);
+  rendered.openOptions.dispatchEvent({ type: 'click' });
+  assert.equal(harness.runtimeOpenOptionsCalls.length, 1);
+});
+
+test('#16 switching the panel state filter to all refetches with state=all and updates counts', async () => {
+  const harness = createHarness('https://git.example.test/group/app/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Open issue', state: 'opened' }]),
+      jsonResponse([{ iid: 7, title: 'Open MR', state: 'opened' }]),
+      jsonResponse([
+        { iid: 15, title: 'Open issue', state: 'opened' },
+        { iid: 14, title: 'Closed issue', state: 'closed' },
+      ]),
+      jsonResponse([{ iid: 8, title: 'Merged MR', state: 'merged' }]),
+    ],
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.match(harness.fetchCalls[0].url, /state=opened/);
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '2');
+
+  rendered.stateFilterAll.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  const afterSwitch = getBadge(harness.document);
+
+  assert.match(harness.fetchCalls[2].url, /state=all/);
+  assert.equal(afterSwitch.stateFilterAll.getAttribute('aria-pressed'), 'true');
+  assert.equal(afterSwitch.stateFilterOpen.getAttribute('aria-pressed'), 'false');
+  assert.equal(afterSwitch.panel.querySelector('[data-open-items-total]').textContent, '3');
+  const closed = afterSwitch.panel.querySelector('[data-iid="14"]');
+  assert.equal(closed.getAttribute('data-item-state'), 'closed');
+
+  // The choice persists through the config store (panel is the single entry).
+  await harness.flushMicrotasks();
+  const savedWrites = harness.storageCalls.set
+    .map((value) => value[CONFIG_STORAGE_KEY])
+    .filter(Boolean);
+  assert.equal(savedWrites.at(-1).user.itemStateFilter, 'all');
+  assert.equal(savedWrites.at(-1).userOverrides.itemStateFilter, true);
+});
+
+test('#16 state filter choice survives navigation to another project without refetch churn', async () => {
+  const harness = createHarness('https://git.example.test/group/app/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Open issue', state: 'opened' }]),
+      jsonResponse([]),
+      jsonResponse([{ iid: 15, title: 'Open issue', state: 'opened' }]),
+      jsonResponse([]),
+    ],
+  });
+
+  const rendered = await openAndLoad(harness);
+  rendered.stateFilterAll.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  assert.match(harness.fetchCalls[2].url, /state=all/);
+
+  harness.location.href = 'https://git.example.test/group/app/-/merge_requests/7';
+  harness.triggerMutation();
+  harness.flushAnimationFrames();
+  await harness.flushMicrotasks();
+
+  const reopened = getBadge(harness.document);
+  reopened.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+
+  const navigated = getBadge(harness.document);
+  assert.equal(navigated.stateFilterAll.getAttribute('aria-pressed'), 'true');
 });
 
 test('renders an accessible local search field and type filters', async () => {

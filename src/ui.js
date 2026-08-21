@@ -363,6 +363,56 @@
         outline-offset: -2px;
       }
 
+      [data-item-state-controls] {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 7px;
+        padding: 6px 10px;
+        border-bottom: 1px solid rgba(31, 41, 55, 0.12);
+        background: inherit;
+      }
+
+      [data-item-state-label] {
+        color: #57606a;
+        font-size: 12px;
+      }
+
+      [data-item-state-controls] [data-open-items-filter] {
+        min-height: 26px;
+        padding: 3px 9px;
+        font-size: 11px;
+      }
+
+      [data-open-options] {
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: #57606a;
+        cursor: pointer;
+        pointer-events: auto;
+        appearance: none;
+      }
+
+      [data-open-options]:hover {
+        background: rgba(31, 41, 55, 0.08);
+        color: #24292f;
+      }
+
+      [data-open-options]:focus-visible {
+        outline: 2px solid #0969da;
+        outline-offset: -2px;
+      }
+
       [data-open-items-message] {
         margin: 8px 10px 2px;
         padding: 7px 9px;
@@ -581,6 +631,7 @@
 
         [data-open-items-header],
         [data-open-items-controls],
+        [data-item-state-controls],
         [data-open-items-group] + [data-open-items-group] {
           border-color: rgba(255, 255, 255, 0.14);
         }
@@ -628,9 +679,18 @@
           color: #79c0ff;
         }
 
-        [data-refresh-open-items]:hover {
+        [data-refresh-open-items]:hover,
+        [data-open-options]:hover {
           background: rgba(255, 255, 255, 0.1);
           color: #ffffff;
+        }
+
+        [data-item-state-label] {
+          color: #b7bdc8;
+        }
+
+        [data-open-options] {
+          color: #b7bdc8;
         }
 
         [data-open-items-message] {
@@ -744,6 +804,23 @@
     return icon;
   }
 
+  function createSettingsIcon() {
+    const namespace = 'http://www.w3.org/2000/svg';
+    const icon = root.document.createElementNS(namespace, 'svg');
+    icon.setAttribute('viewBox', '0 0 16 16');
+    icon.setAttribute('width', '14');
+    icon.setAttribute('height', '14');
+    icon.setAttribute('fill', 'currentColor');
+    icon.setAttribute('aria-hidden', 'true');
+    const path = root.document.createElementNS(namespace, 'path');
+    path.setAttribute(
+      'd',
+      'M8 0a1.75 1.75 0 0 1 1.7 1.33l.12.55c.16.06.32.13.47.21l.48-.29a1.75 1.75 0 0 1 2.13.18l.13.13c.56.56.62 1.44.18 2.13l-.29.48c.08.15.15.31.21.47l.55.12A1.75 1.75 0 0 1 16 8c0 .84-.59 1.56-1.42 1.7l-.55.12c-.06.16-.13.32-.21.47l.29.48c.44.69.38 1.57-.18 2.13l-.13.13a1.75 1.75 0 0 1-2.13.18l-.48-.29c-.15.08-.31.15-.47.21l-.12.55A1.75 1.75 0 0 1 8 16c-.84 0-1.56-.59-1.7-1.42l-.12-.55a4.7 4.7 0 0 1-.47-.21l-.48.29a1.75 1.75 0 0 1-2.13-.18l-.13-.13a1.75 1.75 0 0 1-.18-2.13l.29-.48a4.7 4.7 0 0 1-.21-.47l-.55-.12A1.75 1.75 0 0 1 0 8c0-.84.59-1.56 1.42-1.7l.55-.12c.06-.16.13-.32.21-.47l-.29-.48a1.75 1.75 0 0 1 .18-2.13l.13-.13a1.75 1.75 0 0 1 2.13-.18l.48.29c.15-.08.31-.15.47-.21l.12-.55A1.75 1.75 0 0 1 8 0Zm0 5.25a2.75 2.75 0 1 0 0 5.5 2.75 2.75 0 0 0 0-5.5Z',
+    );
+    icon.append(path);
+    return icon;
+  }
+
   return {
     BADGE_CSS,
     COPY_ICON_PATHS,
@@ -752,5 +829,6 @@
     setIcon,
     createIcon,
     createRefreshIcon,
+    createSettingsIcon,
   };
 });

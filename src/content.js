@@ -106,6 +106,8 @@
     pending: null,
     query: defaultConfig.searchState?.query || '',
     listFilter: defaultConfig.searchState?.listFilter || defaultConfig.listFilter || 'all',
+    stateFilter: defaultConfig.itemStateFilter || 'open',
+    stateFilterOwned: false,
     searchOwned: false,
     truncated: { issues: false, mergeRequests: false },
   };
@@ -142,10 +144,14 @@
     return ['issue', 'merge-request'];
   }
 
+  function getItemStateFilter() {
+    return navigation.stateFilter === 'all' ? 'all' : 'open';
+  }
+
   function isCurrentCache() {
     return navigation.cache?.key === navigation.projectKey
       && navigation.cache?.maxItemsPerType === activeConfig.maxItemsPerType
-      && navigation.cache?.itemStateFilter === activeConfig.itemStateFilter;
+      && navigation.cache?.itemStateFilter === getItemStateFilter();
   }
 
   function itemMatchesQuery(item, query) {
@@ -277,9 +283,7 @@
     const batchLimit = paginated
       ? Math.min(limit, startPage > 1 ? perPage : (activeConfig.maxItemsPerBatch || perPage))
       : limit;
-    const stateParam = (activeConfig.itemStateFilter || 'open') === 'all'
-      ? 'all'
-      : 'opened';
+    const stateParam = getItemStateFilter() === 'all' ? 'all' : 'opened';
     const items = [];
     const visitedPages = new Set();
     let page = String(startPage);
@@ -393,6 +397,8 @@
     navigation.message = '';
     navigation.pending = null;
     navigation.lastLoadedAt = null;
+    // stateFilter is panel-owned (#16); it intentionally survives navigations
+    // and host re-creation, exactly like the query/type filters do.
     if (clearCache) navigation.cache = null;
   }
 
@@ -985,7 +991,7 @@
       const status = root.document.createElement('div');
       status.setAttribute('data-open-items-status', '');
       status.textContent = kind === 'issue' ? '暂无 Open Issue' : '暂无 Open MR';
-      if ((activeConfig.itemStateFilter || 'open') === 'all') {
+      if (getItemStateFilter() === 'all') {
         status.textContent = kind === 'issue' ? '暂无 Issue' : '暂无 MR';
       }
       group.append(status);
@@ -1075,7 +1081,7 @@
       message.textContent = navigation.message;
       children.push(message);
     }
-    const allMode = (activeConfig.itemStateFilter || 'open') === 'all';
+    const allMode = getItemStateFilter() === 'all';
     const naturalEmpty = navigation.query.trim() === '' && state.projectHasNoOpenItems;
     if (state.visibleGroupsReady && state.totalCount === 0 && !naturalEmpty) {
       const empty = root.document.createElement('div');
@@ -1153,7 +1159,15 @@
       refreshText.textContent = '刷新列表';
       refresh.append(refreshText);
       refresh.addEventListener('click', handleRefresh);
-      header.append(heading, refresh);
+
+      const settings = root.document.createElement('button');
+      settings.setAttribute('type', 'button');
+      settings.setAttribute('data-open-options', '');
+      settings.setAttribute('aria-label', '打开设置页');
+      settings.setAttribute('title', '设置');
+      settings.append(uiApi.createSettingsIcon());
+      settings.addEventListener('click', handleOpenOptionsClick);
+      header.append(heading, settings, refresh);
 
       const searchControls = root.document.createElement('div');
       searchControls.setAttribute('data-open-items-controls', '');
@@ -1185,6 +1199,30 @@
       }
       searchControls.append(search, filters);
 
+      const stateControls = root.document.createElement('div');
+      stateControls.setAttribute('data-item-state-controls', '');
+      const stateLabel = root.document.createElement('span');
+      stateLabel.setAttribute('data-item-state-label', '');
+      stateLabel.textContent = '状态';
+      const stateFilters = root.document.createElement('div');
+      stateFilters.setAttribute('data-open-items-filters', '');
+      stateFilters.setAttribute('data-item-state-filters', '');
+      stateFilters.setAttribute('role', 'group');
+      stateFilters.setAttribute('aria-label', '筛选 items 状态');
+      for (const [stateValue, stateText] of [
+        ['open', '仅 Open'],
+        ['all', '全部状态'],
+      ]) {
+        const stateFilter = root.document.createElement('button');
+        stateFilter.setAttribute('type', 'button');
+        stateFilter.setAttribute('data-open-items-filter', 'state');
+        stateFilter.setAttribute('data-item-state-filter', stateValue);
+        stateFilter.textContent = stateText;
+        stateFilter.addEventListener('click', handleStateFilterClick);
+        stateFilters.append(stateFilter);
+      }
+      stateControls.append(stateLabel, stateFilters);
+
       const searchSummary = root.document.createElement('span');
       searchSummary.setAttribute('data-open-items-search-summary', '');
       searchSummary.setAttribute('aria-live', 'polite');
@@ -1192,7 +1230,7 @@
 
       const results = root.document.createElement('div');
       results.setAttribute('data-open-items-results', '');
-      panel.append(header, searchControls, searchSummary, results);
+      panel.append(header, searchControls, stateControls, searchSummary, results);
     }
 
     const heading = panel.querySelector('[data-open-items-heading]');
@@ -1227,6 +1265,13 @@
     for (const filter of panel.querySelectorAll('[data-open-items-filter]')) {
       const kind = filter.getAttribute('data-open-items-filter');
       filter.setAttribute('aria-pressed', navigation.listFilter === kind ? 'true' : 'false');
+    }
+    for (const stateFilter of panel.querySelectorAll('[data-item-state-filter]')) {
+      const stateValue = stateFilter.getAttribute('data-item-state-filter');
+      stateFilter.setAttribute(
+        'aria-pressed',
+        navigation.stateFilter === stateValue ? 'true' : 'false',
+      );
     }
     renderingNavigationPanel = true;
     try {
@@ -1333,7 +1378,7 @@
         navigation.cache = {
           key: projectKey,
           maxItemsPerType: activeConfig.maxItemsPerType,
-          itemStateFilter: activeConfig.itemStateFilter,
+          itemStateFilter: getItemStateFilter(),
           loadedAt: root.Date.now(),
           issues: navigation.issues,
           mergeRequests: navigation.mergeRequests,
@@ -1560,6 +1605,49 @@
     const host = root.document.getElementById(HOST_ID);
     if (host) renderNavigationPanel(host);
     persistSearchState({ immediate: true });
+  }
+
+  function handleStateFilterClick(event) {
+    const nextFilter = event.currentTarget.getAttribute('data-item-state-filter');
+    if (nextFilter !== 'open' && nextFilter !== 'all') return;
+    if (navigation.stateFilter === nextFilter) return;
+    navigation.stateFilter = nextFilter;
+    navigation.stateFilterOwned = true;
+    const host = root.document.getElementById(HOST_ID);
+    if (!host) return;
+    // The state filter changes the API request (state=opened vs all): drop the
+    // cache like a request-policy change and reload, keeping the panel open.
+    navigation.requestGeneration += 1;
+    abortStaleNavigationRequests();
+    navigation.pending = null;
+    navigation.loading = false;
+    navigation.cache = null;
+    navigation.lastLoadedAt = null;
+    navigation.issues = null;
+    navigation.mergeRequests = null;
+    navigation.errors = { issues: false, mergeRequests: false };
+    navigation.truncated = { issues: false, mergeRequests: false };
+    navigation.loadingMore = { issues: false, mergeRequests: false };
+    navigation.message = '';
+    renderNavigationPanel(host);
+    loadOpenItems({ force: true });
+    // Persist through the config store so the choice survives sessions (#16:
+    // the panel is the single entry point for this preference now).
+    Promise.resolve(configStore.save({ itemStateFilter: nextFilter }, getCurrentOrigin()))
+      .catch(() => {
+        // The in-session filter still works when persistence fails.
+      });
+  }
+
+  function handleOpenOptionsClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      root.chrome?.runtime?.openOptionsPage?.();
+    } catch {
+      // The options page is unreachable only in exotic embedded contexts;
+      // the click is still absorbed so the panel stays open.
+    }
   }
 
   function createBadgeHost() {
@@ -1800,7 +1888,8 @@
         if (destroyed || generation !== configurationGeneration) return;
         const requestPolicyChanged = previous.maxItemsPerType !== effective.maxItemsPerType
           || previous.loadingMode !== effective.loadingMode
-          || previous.itemStateFilter !== effective.itemStateFilter;
+          || (!navigation.stateFilterOwned
+            && (previous.itemStateFilter || 'open') !== (effective.itemStateFilter || 'open'));
         let searchDisplayChanged = false;
         const memoryDisabled = previous.rememberSearch && !effective.rememberSearch;
         if (memoryDisabled) {
@@ -1821,6 +1910,13 @@
             || navigation.listFilter !== nextListFilter;
           navigation.query = nextQuery;
           navigation.listFilter = nextListFilter;
+        }
+        if (!navigation.stateFilterOwned) {
+          const nextStateFilter = effective.itemStateFilter === 'all' ? 'all' : 'open';
+          if (navigation.stateFilter !== nextStateFilter) {
+            navigation.stateFilter = nextStateFilter;
+            searchDisplayChanged = true;
+          }
         }
         const navigationDisplayChanged = searchDisplayChanged
           || previous.showLastRefresh !== effective.showLastRefresh
