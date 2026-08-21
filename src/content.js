@@ -1666,14 +1666,14 @@
     event.preventDefault();
     event.stopPropagation();
     try {
-      // #20: openOptionsPage is unavailable in content-script contexts (silent
-      // no-op), so open the options page in a new tab via getURL instead. The
-      // click is a user gesture, so the new tab is not popup-blocked.
-      const optionsUrl = root.chrome?.runtime?.getURL?.('src/options.html');
-      if (optionsUrl) root.open(optionsUrl, '_blank');
+      // #20 (final): openOptionsPage is unavailable in content-script contexts
+      // (silent no-op), and getURL + window.open from a page is blocked by the
+      // browser (ERR_BLOCKED_BY_CLIENT in Arc/Chrome). Delegate to the service
+      // worker via a message so it can call the official openOptionsPage API.
+      root.chrome?.runtime?.sendMessage?.({ type: 'gitlab-reference-open-options' });
     } catch {
-      // The options page is unreachable only in exotic embedded contexts;
-      // the click is still absorbed so the panel stays open.
+      // The message is best-effort; the click is still absorbed so the panel
+      // stays open even if the service worker is unreachable.
     }
   }
 

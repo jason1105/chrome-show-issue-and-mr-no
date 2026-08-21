@@ -84,6 +84,13 @@
     chromeApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message?.type === 'gitlab-reference-permissions-ping') {
         sendResponse({ permissionsModuleLoaded: Boolean(root.GitLabReferencePermissions) });
+      } else if (message?.type === 'gitlab-reference-open-options') {
+        // #20 (final): opening the options page from a content-script context via
+        // getURL + window.open is blocked by the browser (ERR_BLOCKED_BY_CLIENT).
+        // Route through the service worker using the official openOptionsPage API,
+        // which opens from the extension backend and is not subject to that block.
+        chromeApi.runtime.openOptionsPage?.();
+        sendResponse({ opened: true });
       }
       return false;
     });

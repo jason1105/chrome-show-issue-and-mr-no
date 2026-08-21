@@ -19,6 +19,7 @@ function loadBackground(chromeStub) {
 
 function createChromeStub({ syncCalls = [], registeredScripts = [] } = {}) {
   const listeners = {};
+  const openOptionsPageCalls = [];
   const permissionsModule = {
     syncRegisteredScripts: async () => {
       syncCalls.push('syncRegisteredScripts');
@@ -36,6 +37,10 @@ function createChromeStub({ syncCalls = [], registeredScripts = [] } = {}) {
       runtime: {
         onInstalled: { addListener: (fn) => { listeners.onInstalled = fn; } },
         onStartup: { addListener: (fn) => { listeners.onStartup = fn; } },
+        onMessage: { addListener: (fn) => { listeners.onMessage = fn; } },
+        openOptionsPage() {
+          openOptionsPageCalls.push(Date.now());
+        },
       },
       scripting: {
         getRegisteredContentScripts: async () => registeredScripts,
@@ -44,6 +49,7 @@ function createChromeStub({ syncCalls = [], registeredScripts = [] } = {}) {
       storage: { local: { get: async () => ({}) } },
     },
     listeners,
+    openOptionsPageCalls,
   };
 }
 
@@ -90,4 +96,30 @@ test('background still wires onInstalled and onRemoved listeners', async () => {
 
   assert.equal(typeof stub.listeners.onInstalled, 'function');
   assert.equal(typeof stub.listeners.onRemoved, 'function');
+});
+
+test('#20 final: open-options message routes to openOptionsPage on the service worker', async () => {
+  const stub = createChromeStub();
+  loadBackground(stub);
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(typeof stub.listeners.onMessage, 'function');
+
+  let response = null;
+  stub.listeners.onMessage({ type: 'gitlab-reference-open-options' }, {}, (r) => { response = r; });
+  assert.equal(stub.openOptionsPageCalls.length, 1,
+    'open-options message should call chrome.runtime.openOptionsPage');
+  assert.equal(response?.opened, true);
+});
+
+test('#20 final: unrelated message types do not open options', async () => {
+  const stub = createChromeStub();
+  loadBackground(stub);
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  // The pre-existing permissions ping must not trigger openOptionsPage.
+  stub.listeners.onMessage({ type: 'gitlab-reference-permissions-ping' }, {}, () => {});
+  assert.equal(stub.openOptionsPageCalls.length, 0);
 });

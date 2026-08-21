@@ -455,6 +455,7 @@ function createHarness(initialUrl, options = {}) {
 
   const runtimeOpenOptionsCalls = [];
   const windowOpenCalls = [];
+  const runtimeSendMessageCalls = [];
   const i18nMock = {
     getMessage(key, substitutions = []) {
       const entry = zhMessages[key];
@@ -479,13 +480,18 @@ function createHarness(initialUrl, options = {}) {
     chrome: storage ? {
       storage,
       runtime: {
-        // #20: openOptionsPage is not available in content-script contexts;
-        // the shipped code must use getURL + window.open instead.
+        // #20 (final): content-script contexts cannot call openOptionsPage, and
+        // getURL + window.open is blocked (ERR_BLOCKED_BY_CLIENT), so the click
+        // handler sends a message to the service worker to open options instead.
         openOptionsPage() {
           runtimeOpenOptionsCalls.push(Date.now());
         },
         getURL(path) {
           return `chrome-extension://mock-extension-id/${path}`;
+        },
+        sendMessage(message) {
+          runtimeSendMessageCalls.push(message);
+          return null;
         },
       },
     } : {},
@@ -538,6 +544,7 @@ function createHarness(initialUrl, options = {}) {
     storageData,
     runtimeOpenOptionsCalls,
     windowOpenCalls,
+    runtimeSendMessageCalls,
     dispatchStorageChanged(changes, areaName = 'sync') {
       return Promise.all([...storageChangeListeners].map((listener) => listener(changes, areaName)));
     },
@@ -1327,20 +1334,22 @@ test('#16 renders a panel-owned state filter row and a settings button in the he
   assert.equal(header.children[2].getAttribute('data-refresh-open-items'), '');
 });
 
-test('#16/#20 clicking the header settings button opens the options page in a new tab', async () => {
+test('#16/#20 clicking the header settings button asks the service worker to open the options page', async () => {
   const harness = createHarness('https://git.example.test/group/app/-/issues/15', {
     fetchResults: [jsonResponse([]), jsonResponse([])],
   });
 
   const rendered = await openAndLoad(harness);
+  assert.equal(harness.runtimeSendMessageCalls.length, 0);
   assert.equal(harness.windowOpenCalls.length, 0);
   rendered.openOptions.dispatchEvent({ type: 'click' });
-  // #20: openOptionsPage silently no-ops in content-script contexts, so the
-  // handler must open the options page via getURL + window.open instead.
+  // #20 (final): openOptionsPage no-ops and getURL + window.open is blocked in
+  // content-script contexts, so the handler must delegate to the service worker
+  // via runtime.sendMessage; it must not use window.open directly.
+  assert.equal(harness.windowOpenCalls.length, 0);
   assert.equal(harness.runtimeOpenOptionsCalls.length, 0);
-  assert.equal(harness.windowOpenCalls.length, 1);
-  assert.equal(harness.windowOpenCalls[0].url, 'chrome-extension://mock-extension-id/src/options.html');
-  assert.equal(harness.windowOpenCalls[0].target, '_blank');
+  assert.equal(harness.runtimeSendMessageCalls.length, 1);
+  assert.equal(harness.runtimeSendMessageCalls[0]?.type, 'gitlab-reference-open-options');
 });
 
 test('#16 switching the panel state filter to all refetches with state=all and updates counts', async () => {
