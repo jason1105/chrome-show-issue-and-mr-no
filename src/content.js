@@ -1454,6 +1454,7 @@
       activeConfig.protected?.maxItemsPerType || 100,
     );
     const requestController = createAbortSignalSupport();
+    if (requestController) navigation.requestControllers.add(requestController);
     const requestSignal = requestController?.signal || null;
     navigation.loadingMore = { ...navigation.loadingMore, [kindKey]: true };
     renderNavigationPanel(host);

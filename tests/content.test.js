@@ -2750,6 +2750,47 @@ test('aborts stale in-flight requests when navigating to another project', async
   );
 });
 
+// 5) #6 step 2: an in-flight load-more request must be aborted (not merely
+//    ignored afterwards) when the route changes to another project.
+test('aborts an in-flight load-more request when navigating to another project', async () => {
+  const issuePage1 = Array.from({ length: 40 }, (_, index) => ({
+    iid: index + 1,
+    title: `Issue ${index + 1}`,
+  }));
+  const loadMorePage = deferred();
+  const harness = createHarness('https://gitlab.com/acme/old-app/-/issues/1', {
+    fetchResults: [
+      jsonResponse(issuePage1, { nextPage: '2' }),
+      jsonResponse([]),
+      loadMorePage,
+    ],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 2,
+        user: { loadingMode: 'paginated', maxItemsPerBatch: 40, maxItemsPerType: 200 },
+      },
+    },
+  });
+
+  const rendered = await openAndLoad(harness);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 40);
+  rendered.panel.querySelector('[data-open-items-load-more="issue"]').dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  assert.equal(harness.fetchCalls.length, 3);
+
+  // Navigating away must actively abort the pending load-more fetch.
+  harness.location.href = 'https://gitlab.com/acme/new-app/-/issues/7';
+  harness.dispatchWindow('popstate');
+  harness.flushAnimationFrames();
+  await harness.flushMicrotasks();
+
+  assert.equal(
+    harness.fetchCalls[2].init?.signal?.aborted,
+    true,
+    'in-flight load-more request should be aborted after project navigation',
+  );
+});
+
 // 2) load-more clicks while a full (re)load is running are ignored.
 test('ignores load-more clicks while a full reload is in flight', async () => {
   const issues = deferred();
