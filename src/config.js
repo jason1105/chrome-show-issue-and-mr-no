@@ -7,7 +7,7 @@
 })(typeof globalThis === 'undefined' ? this : globalThis, () => {
   'use strict';
 
-  const CONFIG_VERSION = 5;
+  const CONFIG_VERSION = 6;
   const CONFIG_STORAGE_KEY = 'gitlabReferenceConfig';
   const LEGACY_POSITION_STORAGE_KEY = 'gitlabReferenceControlPosition';
   const DEFAULT_POSITION = Object.freeze({ edge: 'top', ratio: 0.5 });
@@ -23,7 +23,10 @@
     showLastRefresh: true,
     touchDrag: true,
     keyboardStep: 8,
-    showOnAllRepoPages: false,
+    // #21: full-repo mode is on by default for new installs. Existing
+    // configs are unaffected: migration v3 writes an explicit `false` for
+    // legacy data, which normalizeConfig treats as a user override.
+    showOnAllRepoPages: true,
     itemStateFilter: 'open',
     searchScope: 'title',
   });
@@ -139,6 +142,28 @@
         userOverrides,
       };
     },
+    5(input) {
+      const user = input.user && typeof input.user === 'object' ? { ...input.user } : {};
+      const userOverrides = input.userOverrides && typeof input.userOverrides === 'object'
+        ? { ...input.userOverrides }
+        : Object.fromEntries(Object.keys(DEFAULT_USER)
+          .filter((name) => Object.prototype.hasOwnProperty.call(user, name))
+          .map((name) => [name, true]));
+      // New in v6 (#21): full-repo mode now defaults to ON for fresh
+      // installs. Every config stored before this flip carries an explicit
+      // user.showOnAllRepoPages value written by the old default; pin it as
+      // an override so existing installs keep their historical (off, unless
+      // explicitly enabled) behavior instead of being silently switched.
+      if (Object.prototype.hasOwnProperty.call(user, 'showOnAllRepoPages')) {
+        userOverrides.showOnAllRepoPages = true;
+      }
+      return {
+        ...input,
+        version: 6,
+        user,
+        userOverrides,
+      };
+    },
   });
 
   function clone(value) {
@@ -225,7 +250,11 @@
   }
 
   function migrateConfig(raw) {
-    let migrated = raw && typeof raw === 'object' ? clone(raw) : {};
+    // A missing record means a fresh install (#21): skip the migration chain
+    // entirely so current defaults apply. Any stored object, however sparse,
+    // is treated as legacy data and goes through the migrations.
+    if (!raw || typeof raw !== 'object') return getDefaultConfig();
+    let migrated = clone(raw);
     let version = getStoredVersion(migrated);
 
     while (version < CONFIG_VERSION) {

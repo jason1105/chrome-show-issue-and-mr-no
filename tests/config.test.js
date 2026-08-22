@@ -40,6 +40,22 @@ function createMemoryStorage(initial = {}) {
   };
 }
 
+test('defaults full-repo mode on for new installs while migrations keep legacy configs off (#21)', () => {
+  const fresh = getDefaultConfig();
+  assert.equal(fresh.user.showOnAllRepoPages, true);
+  assert.deepEqual(fresh.userOverrides, {});
+
+  const normalizedEmpty = normalizeConfig(undefined);
+  assert.equal(normalizedEmpty.user.showOnAllRepoPages, true);
+  assert.deepEqual(normalizedEmpty.userOverrides, {});
+
+  // Legacy configs must not inherit the new default: migration v3 writes an
+  // explicit false which counts as a user override in normalizeConfig.
+  const legacy = migrateConfig({ user: { listFilter: 'issue' } });
+  assert.equal(legacy.user.showOnAllRepoPages, false);
+  assert.equal(normalizeConfig(legacy).user.showOnAllRepoPages, false);
+});
+
 test('normalizes defaults, bounds, enum values, and ignores protected overrides', () => {
   const defaults = getDefaultConfig();
   const normalized = normalizeConfig({
@@ -127,6 +143,7 @@ test('migrates a legacy local configuration into sync on first load (#17)', asyn
   assert.deepEqual(syncStorage.data[CONFIG_STORAGE_KEY].userOverrides, {
     listFilter: true,
     cacheTtlSeconds: true,
+    showOnAllRepoPages: true, // pinned by v6 (#21)
   });
   assert.equal(legacyLocalStorage.data[CONFIG_STORAGE_KEY].version, 1);
 });
@@ -219,11 +236,18 @@ test('migrates an unversioned configuration and persists the current schema', as
   };
   const migrated = migrateConfig(unversioned);
   assert.equal(migrated.version, CONFIG_VERSION);
-  assert.deepEqual(migrated.userOverrides, { listFilter: true, cacheTtlSeconds: true });
+  assert.deepEqual(migrated.userOverrides, {
+    listFilter: true,
+    cacheTtlSeconds: true,
+    showOnAllRepoPages: true, // pinned by v6 (#21)
+  });
   assert.equal(migrated.user.rememberSearch, true);
   assert.equal(migrated.user.showOnAllRepoPages, false);
   assert.equal(migrated.user.itemStateFilter, 'open');
   assert.deepEqual(migrated.searchState, { query: '', listFilter: null });
+  // v6 (#21): the migration-written false is pinned as an override so the
+  // new on-by-default cannot silently enable full-repo mode for legacy data.
+  assert.equal(migrated.userOverrides.showOnAllRepoPages, true);
 
   const storage = createMemoryStorage({ [CONFIG_STORAGE_KEY]: unversioned });
   const store = createConfigStore(storage);
@@ -237,6 +261,7 @@ test('migrates an unversioned configuration and persists the current schema', as
   assert.deepEqual(storage.data[CONFIG_STORAGE_KEY].userOverrides, {
     listFilter: true,
     cacheTtlSeconds: true,
+    showOnAllRepoPages: true, // pinned by v6 (#21)
   });
   assert.equal(storage.calls.set.length, 1);
 });
