@@ -1,158 +1,194 @@
-# GitLab Issue/MR Number Pin
+<p align="center">
+  <img src="icons/icon-128.png" alt="GitLab Issue/MR Number Pin" width="96" />
+</p>
 
-一个无构建步骤的 Manifest V3 浏览器扩展。在 GitLab Issue 或 Merge Request
-详情页顶部固定显示当前编号，页面滚动后仍保持可见：
+<h1 align="center">🩷 GitLab Issue/MR Number Pin</h1>
 
-- Issue 显示为 `Issue #123`
-- Merge Request 显示为 `MR !456`
+<p align="center">
+  <em>Pin the current Issue / MR number at the top of GitLab pages — always visible, one-click copy!</em>
+</p>
 
-编号右侧常驻一个类似 GitHub 仓库地址控件的复制按钮。鼠标悬停或键盘聚焦时会
-显示 `复制 #123` 或 `复制 !456`；点击后分别复制 `#123` 或 `!456`，并将图标
-短暂切换为绿色对勾和“已复制”提示。复制失败时会显示“复制失败”，所有反馈会在
-1.5 秒后恢复。
+<div align="center">
 
-鼠标悬停或键盘聚焦编号区域，会打开当前项目的全部 Open Issue 和 Open MR 列表：
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/dmkkdfokknoilapcghjnncnehagcnfcc?label=Chrome%20Web%20Store&style=for-the-badge&color=4479C1)](https://chromewebstore.google.com/detail/gitlab-issuemr-number-pin/dmkkdfokknoilapcghjnncnehagcnfcc)
+[![Chrome Web Store Users](https://img.shields.io/chrome-web-store/users/dmkkdfokknoilapcghjnncnehagcnfcc?label=Users&style=for-the-badge&color=4479C1)](https://chromewebstore.google.com/detail/gitlab-issuemr-number-pin/dmkkdfokknoilapcghjnncnehagcnfcc)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/jason1105/chrome-show-issue-and-mr-no?style=for-the-badge&color=4CAF50)](https://github.com/jason1105/chrome-show-issue-and-mr-no)
+[![GitHub release](https://img.shields.io/github/v/release/jason1105/chrome-show-issue-and-mr-no?style=for-the-badge&color=FF5722)](https://github.com/jason1105/chrome-show-issue-and-mr-no/releases)
 
-- Issue 在前，MR 在后；
-- 可按标题关键字搜索，也可输入 `#123`、`!456` 精确查找编号；纯数字 `123`
-  默认同时匹配相同编号与标题含该数字的条目（可在设置中改为仅匹配编号）；
-- 可在“全部 / Issue / MR”之间切换类型筛选，搜索与筛选均在本地完成，不会增加
-  API 请求；
-- 当前条目高亮显示“当前”，不重复跳转；
-- 点击其他条目会在当前标签页打开对应详情页；
-- “刷新列表”会绕过 60 秒内存缓存，立即获取最新结果。
+</div>
 
-扩展每次加载列表时都会获取 Issue 和 MR 两类数据，因此切换筛选条件无需重新请求。
-搜索词和类型筛选默认会在本机记住，刷新列表、重新打开页面或浏览器重启后仍会恢复；
-可在设置页关闭记忆。
+---
 
-触摸设备可点击编号区域打开或关闭列表。接口加载失败不会影响编号显示和快速复制。
+> 🌍 [English](README.md) · [简体中文](README.zh-CN.md) ｜ A zero-build, zero-tracking, zero-upload **Manifest V3** browser extension
 
-编号左侧的六点手柄用于调整控件位置。拖动后控件会吸附到窗口顶部、左侧或右侧，
-并在后续页面及浏览器重启后沿用同一位置；窗口尺寸变化时会自动保持在可视区域内。
-双击手柄可恢复顶部居中。Open Issue/MR 列表会根据控件所在边缘向窗口内侧展开。
+---
 
-扩展兼容 `gitlab.com` 和任意 HTTP/HTTPS 自建 GitLab 域名，例如
-`http://git.tsintergy.com`。目标浏览器为 Chrome 150 和 Arc 1.157.1
-（Chromium 150）。
+## 📖 Introduction
 
-## 安装
+**GitLab Issue/MR Number Pin** is a build-free **Manifest V3** browser extension designed for developers who frequently switch between GitLab Issues and Merge Requests.
 
-### Chrome
+When you jump back and forth between GitLab Issue or MR detail pages, you're often troubled by "Wait, which number am I looking at right now?". This extension pins the current number badge at the **top of the page**, **stays visible after scrolling**, so you always know which Issue / MR you're on.
 
-1. 打开 `chrome://extensions`。
-2. 开启右上角的“开发者模式”。
-3. 点击“加载已解压的扩展程序”。
-4. 选择本仓库根目录，也就是包含 `manifest.json` 的目录。
-5. 保持扩展开启，然后刷新已经打开的 GitLab 页面。
+| Issue | Merge Request |
+|-------|---------------|
+| Shows `Issue #123` | Shows `MR !456` |
 
-### Arc
+<p align="center">
+  <img src="screenshots/store/01-main-panel.png" alt="Main panel" width="90%" />
+</p>
 
-1. 打开 `arc://extensions`（也可打开 `chrome://extensions`）。
-2. 开启“开发者模式”。
-3. 点击“加载已解压的扩展程序”。
-4. 选择本仓库根目录。
-5. 保持扩展开启，然后刷新已经打开的 GitLab 页面。
+---
 
-浏览器重启后扩展仍会保留。源码更新后，在扩展管理页点击该扩展的“重新加载”
-按钮，并刷新 GitLab 页面即可应用新版本。
+## ✨ Features
 
-## 设置
+### 🏷️ Floating Number Badge
 
-在 `chrome://extensions` 或 `arc://extensions` 的扩展详情中点击“扩展程序选项”，
-即可打开设置页。设置保存于 `chrome.storage.sync`，会随登录的 Chrome 账号同步，卸载
-重装后自动恢复；不会通过远程配置覆盖。
+- **Pins the current number** at the top of Issue/MR detail pages, stays visible when scrolling
+- Auto-detects modern and legacy GitLab URLs, supports multi-level namespaces (groups)
+- Works with `gitlab.com` and any HTTP/HTTPS self-hosted GitLab domain
 
-可调整的选项包括：
+### 📋 One-Click Quick Copy
 
-- 默认列表筛选：全部、仅 Issues 或仅 Merge requests；
-- 是否记住列表搜索词和类型筛选，默认开启；
-- 搜索范围：纯数字输入时匹配“标题与编号”（默认）或“仅编号”；
-- 列表缓存有效期：5 到 300 秒，默认 60 秒；
-- 每类最多显示数量：1 到 100，默认 100；
-- 加载模式：并行加载或顺序加载；
-- 是否显示最后刷新时间；
-- 是否允许触屏拖动控件；
-- 键盘移动步长：1 到 50 像素，默认 8 像素。
+- A persistent **copy button** sits next to the number (like GitHub's repo address control)
+- Hover/focus shows `Copy #123` / `Copy !456`; clicking copies the corresponding number
+- Shows a green check + "Copied" on success; "Copy failed" on error, auto-resumes after 1.5s
+- On non-secure contexts (HTTP) it falls back to the browser's built-in clipboard — no extra permission needed
 
-设置页提供“保存设置”和“恢复默认值”。输入值超出范围或不属于已知选项时，配置
-层会自动恢复为合法值。浏览器存储写入失败时会保留当前页面内存中的新配置并提示
-保存失败；重新加载扩展或页面后仍以浏览器中实际保存的配置为准。
+### 🔎 In-Project Open Issue/MR Navigation
 
-配置结构预留了站点级 profile，但当前设置页只编辑全局用户偏好。全局用户明确保存
-的字段优先于站点 profile；搜索框中的类型筛选只改变当前列表显示，默认列表筛选
-仍决定未保存搜索状态时的初始值。列表筛选、请求数量、加载方式等设置不会关闭 SPA
-旧响应隔离、配置校验、敏感数据保护等安全和生命周期约束。
+- Hover/focus the number area to expand a list of **all Open Issues and Open MRs** in the current project
+- Issues first, MRs after; the current item is highlighted "Current", click any other to jump to its detail page
+- **Title-keyword search**; supports `#123` / `!456` exact lookup; plain numbers match number or title by default (can be set to number-only)
+- "All / Issue / MR" type filter; search & filtering are all done **locally**, adding no extra API requests
+- "Refresh list" bypasses the 60s in-memory cache to fetch the latest immediately
 
-## 支持范围
+### 🖱️ Draggable Control + Position Memory
 
-扩展识别现代和旧式 GitLab URL，namespace 可以包含多层群组：
+- Drag via the six-dot handle on the left to snap the control to the top/left/right edge of the window
+- Position persists across pages and browser restarts; auto stays visible on window resize
+- Double-click the handle to reset to top-center; the list expands inward based on which edge the control sits on
 
-```text
-https://gitlab.com/<namespace>/<project>/-/issues/<iid>
-https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid>
-http://<self-hosted>/<namespace>/<project>/-/issues/<iid>
-http://<self-hosted>/<namespace>/<project>/-/merge_requests/<iid>
-```
+### 🌐 Full-Repo Mode
 
-旧式的 `/issues/<iid>` 和 `/merge_requests/<iid>` 路径也受支持。查询参数、
-锚点和合法子页面（如 MR 的 `diffs`）不会影响编号显示。
+- Enable to make it work on **all repository pages** (not just detail pages), so the number hint is available anywhere
 
-列表页、新建页、编辑页、非法编号、非 HTTP/HTTPS URL 均不会显示标签。
-扩展通过 URL 路径判断页面类型，因此非 GitLab 网站若使用完全相同的路径结构，
-也可能显示标签。
+### 🧩 Multilingual & Custom Settings
 
-## 权限与隐私
+- Built-in localization (`.i18n`), follows your browser language
+- Options page can adjust default list filter, search scope, cache TTL, load mode, and more
 
-为了在安装后直接支持未知的自建 GitLab 域名，内容脚本匹配所有 HTTP 和 HTTPS
-网站。因此 Chromium 会显示“读取和更改所有网站上的数据”一类权限提示。
+### ⚡ Zero Build · Zero Dependency · Zero Tracking
 
-扩展会解析当前页面 URL，创建、更新或移除自己的固定标签，并在用户首次打开导航
-列表时请求当前站点的同源 GitLab REST API v4：
+- No build step, no remote code, no analytics service, no runtime dependencies
+- Minimal permissions: `storage` + `scripting`; all host permissions are optional
 
-- 请求仅用于读取当前项目的 Open Issue 和 Open MR；
-- 请求复用浏览器已有的 GitLab 登录会话，不读取或存储 token、Cookie 及其他认证
-  信息；
-- 仅在当前页面内存中缓存 IID、标题和详情 URL，缓存有效期默认 60 秒，可在设置页
-  调整为 5 到 300 秒；
-- 使用 `storage` 权限在本机保存一份跨项目共享的控件位置，内容为吸附边缘和边缘
-  相对比例 `{ edge, ratio }`，以及经过校验的用户偏好、搜索词和类型筛选；
-- 不读取 Issue/MR 正文、评论或账号资料，不持久化 Issue/MR 列表、正文、Cookie、
-  token 或其他认证信息，也不上传数据；持久化搜索状态仅包含搜索词和类型筛选，
-  不包含任何列表条目；
-- 配置版本化存储在单个 `gitlabReferenceConfig` 键中；旧版本的
-  `gitlabReferenceControlPosition` 会在读取时迁移并清理；
-- 配置层不接受远程配置，不存储敏感数据，单次列表请求最多读取每类 100 项；
-- 复制时仅将当前 URL 中解析出的 `#编号` 或 `!编号` 写入本机剪贴板；
-- 不申请 `tabs`、`cookies`、`identity` 等扩展 API 权限；
-- 不包含远程代码、统计服务或运行时依赖。
+---
 
-导航接口返回错误、不可用或当前会话无权访问时，列表会显示失败状态，但固定编号和
-复制功能保持可用。位置存储失败时也不影响当前页面内的拖动和复位。
+## 🛠️ Installation
 
-扩展优先使用浏览器 Clipboard API。对于不具备安全上下文 Clipboard API 的 HTTP
-自建 GitLab，会自动使用浏览器内置的本地复制降级方式；该能力不需要增加扩展
-权限，也不会改变上述隐私模型。
+### ✅ Option 1: Chrome Web Store (recommended)
 
-实现可直接查看：[URL 解析器](src/parser.js)、[配置层](src/config.js)、[固定标签内容脚本](src/content.js)、
-[设置页](src/options.html) 和 [Manifest](manifest.json)。
+<div align="center">
 
-## 开发与测试
+[![Chrome Web Store](https://img.shields.io/badge/Install%20from%20Chrome%20Web%20Store-4479C1?style=for-the-badge&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/gitlab-issuemr-number-pin/dmkkdfokknoilapcghjnncnehagcnfcc)
 
-运行单元测试和静态检查：
+</div>
+
+Direct store link: <https://chromewebstore.google.com/detail/gitlab-issuemr-number-pin/dmkkdfokknoilapcghjnncnehagcnfcc>
+
+### 📦 Option 2: Manual Load (developers)
+
+#### Chrome
+
+1. Open `chrome://extensions`
+2. Enable "Developer mode" at the top right
+3. Click "Load unpacked"
+4. Select this repository's root directory (the one containing `manifest.json`)
+5. Keep the extension enabled and refresh your open GitLab pages
+
+#### Arc
+
+1. Open `arc://extensions` (or `chrome://extensions`)
+2. Enable "Developer mode"
+3. Click "Load unpacked"
+4. Select this repository's root directory, then refresh GitLab pages
+
+> 💡 The extension persists after a browser restart. After updating the source, click "Reload" on the extension management page and refresh the GitLab page to apply the new version.
+
+---
+
+## ⚙️ Usage & Configuration
+
+Open "Extension Options" from the extension detail page to open the settings. Settings are stored in `chrome.storage.sync`, synced with your Chrome account, auto-restored after uninstall/reinstall, and **never overridden by remote config**.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Default list filter | All / Issues only / Merge requests only | All |
+| Remember search term & filter | Restored on refresh, page reopen, restart | On |
+| Search scope | Plain numbers match "title & number" or "number only" | Title & number |
+| List cache TTL | 5 ~ 300 seconds | 60 seconds |
+| Max display per type | 1 ~ 100 | 100 |
+| Load mode | Parallel / Sequential | Parallel |
+| Show last refresh time | Panel shows refresh time | On |
+| Allow touch drag | Touch devices can drag the control | On |
+| Keyboard move step | 1 ~ 50 pixels | 8 pixels |
+
+> ⚙️ The options page provides "Save settings" and "Restore defaults"; when an input is out of range or illegal, the config layer auto-restores a legal value.
+
+---
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="screenshots/store/01-main-panel.png" alt="Main panel" width="45%" />
+  <img src="screenshots/store/02-panel-state-filter.png" alt="State filter" width="45%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/store/03-panel-search.png" alt="Search" width="45%" />
+  <img src="screenshots/store/04-options-page.png" alt="Options page" width="45%" />
+</p>
+
+<p align="center">
+  <img src="screenshots/store/05-badge-scroll.png" alt="Floating badge on scroll" width="90%" />
+</p>
+
+---
+
+## 🔐 Permissions & Privacy
+
+To support unknown self-hosted GitLab domains right after installation, the content script matches all HTTP/HTTPS sites, so Chromium shows a "Read and change all your data on all websites" notice.
+
+- Only parses the current page URL to create/update/remove the pinned badge
+- On the first open of the navigation list, calls the current site **same-origin** GitLab REST API v4, reading only the current project's Open Issues/MRs
+- Reuses your existing GitLab login session — **never reads or stores tokens, Cookies**, or credentials
+- Caches IID, title, and detail URL in memory only (default 60s, configurable 5~300s)
+- Uses the `storage` permission to save control position `{ edge, ratio }` and your preferences, search terms, type filters
+- **Never reads** Issue/MR body content, comments, or account profiles; **never uploads any data**
+- Doesn't request `tabs`, `cookies`, `identity`, or similar permissions; **no remote code, analytics, or runtime dependencies**
+
+> 🛡️ Zero data collection · Zero remote code · Versioned config · Reads at most 100 items per type at a time
+
+**Implementation source**: [URL parser](src/parser.js) · [config layer](src/config.js) · [content script](src/content.js) · [options page](src/options.html) · [Manifest](manifest.json)
+
+---
+
+## 🧑‍💻 Development & Testing
+
+Run unit tests and static checks:
 
 ```bash
 npm test
 ```
 
-运行真实 Chromium 浏览器测试：
+Run real Chromium browser tests:
 
 ```bash
 npm run test:browser
 ```
 
-浏览器测试需要 Chrome/Chromium 和相同主版本的 ChromeDriver。可通过环境变量指定
-可执行文件：
+Browser tests require Chrome/Chromium and a ChromeDriver of the same major version; you can specify the executables via environment variables:
 
 ```bash
 CHROME_PATH="/path/to/chrome" \
@@ -160,13 +196,35 @@ CHROMEDRIVER_PATH="/path/to/chromedriver" \
 npm run test:browser
 ```
 
-完整测试环境、覆盖矩阵、自动化结果与手工验收边界见
-[测试文档](docs/testing.md)。基础标签的设计和实施过程分别保留在
-[标签设计文档](docs/superpowers/specs/2026-07-29-gitlab-reference-badge-design.md)与
-[标签实施计划](docs/superpowers/plans/2026-07-30-gitlab-reference-badge-implementation.md)；
-快速复制功能对应
-[复制设计文档](docs/superpowers/specs/2026-07-31-gitlab-reference-quick-copy-design.md)与
-[复制实施计划](docs/superpowers/plans/2026-07-31-gitlab-reference-quick-copy-implementation.md)；
-项目内 Open Issue/MR 导航对应
-[导航设计文档](docs/superpowers/specs/2026-07-31-gitlab-open-items-navigation-design.md)与
-[导航实施计划](docs/superpowers/plans/2026-07-31-gitlab-open-items-navigation-implementation.md)。
+See [Testing](docs/testing.md) for the full test environment, coverage matrix, automation results, and manual acceptance boundaries.
+
+**Design/implementation docs**:
+
+- Badge: [design](docs/superpowers/specs/2026-07-29-gitlab-reference-badge-design.md) · [implementation](docs/superpowers/plans/2026-07-30-gitlab-reference-badge-implementation.md)
+- Quick copy: [design](docs/superpowers/specs/2026-07-31-gitlab-reference-quick-copy-design.md) · [implementation](docs/superpowers/plans/2026-07-31-gitlab-reference-quick-copy-implementation.md)
+- Navigation: [design](docs/superpowers/specs/2026-07-31-gitlab-open-items-navigation-design.md) · [implementation](docs/superpowers/plans/2026-07-31-gitlab-open-items-navigation-implementation.md)
+
+---
+
+## 🤝 Contributing
+
+Issues and Pull Requests are welcome! Please follow:
+
+1. Fork this repository and create a new feature branch
+2. Run `npm test` before submitting to make sure it passes
+3. Describe your changes and self-test evidence clearly in the PR
+4. Keep the minimal-permission and zero-remote-code principles
+
+---
+
+## 📄 License
+
+This project is open-sourced under the **MIT License**. See the [LICENSE](LICENSE) file.
+
+`Copyright (c) 2026 jason1105`
+
+---
+
+## 🙏 Acknowledgements
+
+Thanks to all developers who use, test, and give feedback. If this extension helps you, feel free to give it a ⭐!
