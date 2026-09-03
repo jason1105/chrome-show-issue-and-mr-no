@@ -38,10 +38,10 @@ test('requests optional host permissions and dynamically registers scripts', () 
   assert.equal(fs.statSync(path.join(projectRoot, 'src/permissions.js')).isFile(), true);
 });
 
-test('registers content scripts in parser → config → i18n → ui → content order at document_start', () => {
+test('registers content scripts in parser → config → i18n → badge-css → ui → content order at document_start', () => {
   const permissionsSource = fs.readFileSync(path.join(projectRoot, 'src/permissions.js'), 'utf8');
-  assert.match(permissionsSource, /CONTENT_SCRIPT_FILES[\s\S]*?'src\/parser\.js'[\s\S]*?'src\/config\.js'[\s\S]*?'src\/i18n\.js'[\s\S]*?'src\/ui\.js'[\s\S]*?'src\/content\.js'/);
-  const order = ['src/parser.js', 'src/config.js', 'src/i18n.js', 'src/ui.js', 'src/content.js']
+  assert.match(permissionsSource, /CONTENT_SCRIPT_FILES[\s\S]*?'src\/parser\.js'[\s\S]*?'src\/config\.js'[\s\S]*?'src\/i18n\.js'[\s\S]*?'src\/badge-css\.js'[\s\S]*?'src\/ui\.js'[\s\S]*?'src\/content\.js'/);
+  const order = ['src/parser.js', 'src/config.js', 'src/i18n.js', 'src/badge-css.js', 'src/ui.js', 'src/content.js']
     .map((name) => permissionsSource.indexOf(`'${name}'`));
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'script files must be listed in order');
   assert.match(permissionsSource, /document_start/);

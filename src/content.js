@@ -23,6 +23,7 @@
   const parseGitLabProjectPage = root.GitLabReferenceParser?.parseGitLabProjectPage;
   const configApi = root.GitLabReferenceConfig;
   const uiApi = root.GitLabReferenceUi;
+  const badgeCssApi = root.GitLabReferenceBadgeCss;
   const i18nApi = root.GitLabReferenceI18n;
   const t = (key, substitutions) => (
     i18nApi && typeof i18nApi.getMessage === 'function'
@@ -1684,7 +1685,7 @@
 
     const shadow = host.attachShadow({ mode: 'open' });
     const style = root.document.createElement('style');
-    style.textContent = uiApi.BADGE_CSS;
+    style.textContent = badgeCssApi.BADGE_CSS;
 
     const badge = root.document.createElement('div');
     badge.setAttribute('data-reference-badge', '');

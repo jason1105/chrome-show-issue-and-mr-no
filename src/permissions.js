@@ -15,6 +15,7 @@
     'src/parser.js',
     'src/config.js',
     'src/i18n.js',
+    'src/badge-css.js',
     'src/ui.js',
     'src/content.js',
   ]);
