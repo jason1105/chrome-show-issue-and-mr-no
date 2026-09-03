@@ -35,6 +35,19 @@
     console.log('[SW] boot: getRegisteredContentScripts failed', error);
   });
 
+  // Boot badge re-derivation (follow-up issue): the action badge is a
+  // per-process provisional UI state that Chrome/Edge do not guarantee to
+  // survive a full browser restart — the durable source of truth is
+  // storage.local.pending (PENDING_ORIGINS_STORAGE_KEY). Rerun the idempotent
+  // updatePendingBadge on every SW start so a real pending set is re-lit as
+  // "!" after any restart shape that cleared the badge, without a user action.
+  // This is intentionally decoupled from the script-registration state above:
+  // even when registrations already exist, the badge may still need re-deriving.
+  if (permissions?.updatePendingBadge) {
+    permissions.updatePendingBadge(chromeApi)
+      .catch((error) => console.log('[SW] boot: badge re-derivation failed', error));
+  }
+
   function readLegacyConfig() {
     return chromeApi.storage.local.get([CONFIG_STORAGE_KEY]).then((result) => {
       const stored = result?.[CONFIG_STORAGE_KEY];

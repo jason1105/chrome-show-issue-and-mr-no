@@ -20,6 +20,7 @@ function loadBackground(chromeStub) {
 function createChromeStub({ syncCalls = [], registeredScripts = [] } = {}) {
   const listeners = {};
   const openOptionsPageCalls = [];
+  const badgeCalls = [];
   const permissionsModule = {
     syncRegisteredScripts: async () => {
       syncCalls.push('syncRegisteredScripts');
@@ -29,7 +30,7 @@ function createChromeStub({ syncCalls = [], registeredScripts = [] } = {}) {
       syncCalls.push('handlePermissionRemoved');
     },
     migrateLegacyOriginsOnUpdate: async () => [],
-    updatePendingBadge: async () => {},
+    updatePendingBadge: async () => { badgeCalls.push('updatePendingBadge'); },
   };
   return {
     permissionsModule,
@@ -50,6 +51,7 @@ function createChromeStub({ syncCalls = [], registeredScripts = [] } = {}) {
     },
     listeners,
     openOptionsPageCalls,
+    badgeCalls,
   };
 }
 
@@ -76,6 +78,39 @@ test('#15 path D: cold boot with existing registrations skips re-sync', async ()
 
   assert.deepEqual(syncCalls, [],
     'cold boot with non-empty registrations should not re-sync (idempotent skip)');
+});
+
+test('follow-up badge: boot re-derives badge when no registrations exist (re-sync path)', async () => {
+  const stub = createChromeStub({
+    syncCalls: [],
+    registeredScripts: [],
+  });
+  loadBackground(stub);
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(stub.badgeCalls.includes('updatePendingBadge'),
+    'cold boot should re-derive the pending badge after clearing a restart');
+});
+
+test('follow-up badge: boot re-derives badge even when content scripts are already registered', async () => {
+  // The badge reflects storage.local.pending (durable source of truth), which is
+  // independent of dynamic content-script registration state. A full browser
+  // restart may clear the provisional badge while registrations persist, so the
+  // badge must be re-derived regardless of the re-sync skip.
+  const syncCalls = [];
+  const stub = createChromeStub({
+    syncCalls,
+    registeredScripts: [{ id: 'gitlab-reference-main' }],
+  });
+  loadBackground(stub);
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(syncCalls, [],
+    'registrations present means the content-script re-sync path is skipped');
+  assert.ok(stub.badgeCalls.includes('updatePendingBadge'),
+    'badge re-derivation must still run even when registration re-sync is skipped');
 });
 
 test('#15 path D: no onStartup listener is registered', async () => {
