@@ -40,18 +40,32 @@
 
 `npm test`（`NODE_ENV=development`）：**170/170 PASS，0 fail**（github/main 基线 + B1 增量）。
 
-## 三、环境说明（真机截图降级）
+## 三、真机截图（已补齐，浅色主题）
 
-> ⚠️ **真机截图因环境缺失，暂以客观计算替代；环境就绪后补出图。**
+> ✅ **环境已补装，真机「浅色主题」截图已成功产出**（2026-09-04，manager 授权 UI 补环境出图）。
 
-- 本机 `chrome-for-testing`/`chromedriver`/`playwright`/`selenium` 全部未装；Google GCS 存储 `/chrome-for-testing-public/` 需带版本路径方可下载；补装整套驱动成本高、稳定性差。
-- 颜色可达 WCAG AA 4.5:1 属**客观可算**指标（相对亮度法），不依赖目测截图，故本轮复测采信「客观计算 + 单元测试」作为证据链闭环。
-- 已存 `screenshots/raw/*.png` 是**旧版深色主题**快照，不代表 PR #15 现浅色主题，已标记过时，不作证据。
-- **降级裁定**：(1) 补装驱动后出「浅色主题」真机截图，列为 #11 Release 终验的**可选补强项**，不占门禁；(2) 本轮 B1 冻结基线复测以客观计算 + 170/170 测试为准，正常收口；(3) **是否补环境出图由 admin 决定，不作为本次放行的硬门槛。**
+- **环境补装**：下载解压 `chrome-for-testing 152.0.7977.76`（mac-arm64）至 `/tmp/cfT`，安装 `puppeteer-core@25.10.0`，加载**真实未打包扩展**出图。
+- **出图基线**：当前工作树 `8283302`（B1 a11y 增量），即 github/main `1e122f4` + B1 增量 —— 与复测基线完全一致。
+- **浅色主题保证**：`--force-prefers-color-scheme=light` + 页面级 `emulateMediaFeatures([{prefers-color-scheme:'light'}])`，确保 `@media (prefers-color-scheme: dark)` 分支不生效，徽标/面板呈浅色白底。
+- **授权方式**：扩展真实 options 页 `#grant-origin` 点击手势（CDP `Input.dispatchMouseEvent` = 真实用户手势），授权 fixture origin，再经 `syncRegisteredScripts` 注册动态内容脚本（含 persist check + register loop 双断言，吸收 SW 生命周期竞态）。
+- **4 张截图**（`screenshots/issue11-release/`，1280×800；原始 2560×1600 高清在 `screenshots/raw/`）：
+
+| 图 | 文件 | 内容 | 主题 |
+|---|---|---|---|
+| 01 主面板 | `issue11-01-main-panel.png` | 展开面板 Open-only 默认视图，当前项 #8 `Current` 浅蓝高亮 | 浅色 |
+| 02 展开面板 | `issue11-02-panel-expanded.png` | 面板「All states」状态筛选视图 | 浅色 |
+| 03 滚动徽标 | `issue11-03-badge-scroll.png` | 滚动到底部白色徽标 "Issue #8" 吸顶可见（拖拽手柄 + 复制图标） | 浅色 |
+| 04 焦点态 | `issue11-04-focus-visible.png` | 徽标 focus-visible 焦点环（`outline: 2px solid #0969da` 浅蓝） | 浅色 |
+
+- 视觉核对：白底徽标深色文字（`#ffffff` bg / `#1f2937` text，对比度 13.29 远超 AA），面板白底深字，全部浅色主题，符合 B1 规格。
+- 留档说明：③「真机截图暂以客观计算替代」的记录已由本图**取代** —— 截图已实际产出，作为验收标准①的可视化证据。
+
 
 
 ## 四、结论
 
 - **B1 冻结基线的核心复测已通过**：a11y 增量干净（2 文件）、对比度全部达 WCAG AA、回归 170/170 无破坏。
-- 待定：①是否需要 UI 补环境出「浅色主题」真机截图作为可视化证据；②主题跟随（C 线）+ 全键盘（C 线）两条标准属 @dev，B1 不承担。
+- **真机「浅色主题」截图已补齐**（4 张，见第三节），作为验收标准①的可视化证据，供 @admin 查看样式。
+- 待定：主题跟随（C 线）+ 全键盘（C 线）两条标准属 @dev，B1 不承担。
 - 建议 @test 基于本条记录 + 实际对比度数据判 AA，独立做验收。
+
