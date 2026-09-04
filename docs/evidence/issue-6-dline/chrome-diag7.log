@@ -1,0 +1,36 @@
+=== chrome://version ===
+Google LLC
+Copyright 2026 Google LLC. All rights reserved.
+Google Chrome	152.0.7977.65 (Official Build) (arm64) 
+Revision	fc4d67f1788019a27e32511137ceccbd2fafdaaa-refs/branch-heads/7977@{#1892}
+OS	macOS Version 26.5.2 (Build 25F84)
+JavaScript	V8 15.2.124.18
+User Agent	Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36
+Command Line	/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --allow-pre-commit-input --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-crash-reporter --disable-default-apps --disable-dev-shm-usage --disable-hang-monitor --disable-infobars --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-search-engine-choice-screen --disable-sync --enable-automation --export-tagged-pdf --force-color-profile=srgb --generate-pdf-document-outline --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --disable-features=Translate,AcceptCHFrame,MediaRouter,OptimizationHints,WebUIReloadButton,WebUIOmniboxPopup,WebUIOmniboxAimPopup,ProcessPerSiteUpToMainFrameThreshold,IsolateSandboxedIframes,DisableLoadExtensionCommandLineSwitch --enable-features=PdfOopif --user-data-dir=/var/folders/rm/7p8yg6s52_3bg_c9975gv8080000gn/T/chrome-dbg6-L8Q56G --disable-extensions --disable-extensions-except=/tmp/edge-dev2-worktree --load-extension=/tmp/edge-dev2-worktree --no-first-run --no-default-browser-check --disable-sync --remote-debugging-port=0 --flag-switches-begin --flag-switches-end about:blank
+Executable Path	/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+Profile Path	/private/var/folders/rm/7p8yg6s52_3bg_c9975gv8080000gn/T/chrome-dbg6-L8Q56G/Default
+Linker	lld
+Variations Source	command line or about flags
+Command-line Variations	eyJkaXNhYmxlLWZlYXR1cmVzIjoiQWNjZXB0Q0hGcmFtZSxEaXNhYmxlTG9h...	
+Active Variations	b6f29041-9af5ba90
+b357b792-dcf2ae30
+f4f00e05-ca7d8d80
+70678518-dee66fa8
+be338734-dee66fa8
+5f9907a9-dee66fa8
+8eeccb9a-dee66fa8
+2b465683-dee66fa8
+52fc7926-dee66fa8
+bc9b361d-dee66fa8
+a41a7188-dee66fa8
+ff71bfdc-dee66fa8
+2159dd0c-dee66fa8
+e7cc79d5-dee66fa8
+4b935545-3d47f4f4
+9a38bae3-6046c8a7
+2d1e43a3-3d47f4f4
+370ace14-3f4a17df
+386dc267-3d47f4f4
+d69d967d-9cce7190
+3c8f75a1-dcfbe471
+a4406b35-1657e2

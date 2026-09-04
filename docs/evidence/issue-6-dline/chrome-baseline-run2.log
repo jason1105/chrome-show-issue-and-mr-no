@@ -1,0 +1,4 @@
+[chrome-baseline:boot] Chrome=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+[chrome-baseline:profile] /var/folders/rm/7p8yg6s52_3bg_c9975gv8080000gn/T/chrome-baseline-Gn3MAf
+FAILED: Error: ext SW not found in Chrome
+    at main (file:///private/tmp/chrome-baseline/baseline.mjs:62:26)
