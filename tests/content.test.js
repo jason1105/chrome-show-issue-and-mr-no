@@ -296,6 +296,7 @@ function jsonResponse(body, options = {}) {
 function createHarness(initialUrl, options = {}) {
   const configSource = fs.readFileSync(path.join(__dirname, '../src/config.js'), 'utf8');
   const i18nSource = fs.readFileSync(path.join(__dirname, '../src/i18n.js'), 'utf8');
+  const badgeCssSource = fs.readFileSync(path.join(__dirname, '../src/badge-css.js'), 'utf8');
   const uiSource = fs.readFileSync(path.join(__dirname, '../src/ui.js'), 'utf8');
   const source = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
   // i18n: load the zh_CN dictionary as the single source of truth so content
@@ -530,6 +531,7 @@ function createHarness(initialUrl, options = {}) {
 
   vm.runInNewContext(configSource, context, { filename: 'src/config.js' });
   vm.runInNewContext(i18nSource, context, { filename: 'src/i18n.js' });
+  vm.runInNewContext(badgeCssSource, context, { filename: 'src/badge-css.js' });
   vm.runInNewContext(uiSource, context, { filename: 'src/ui.js' });
   vm.runInNewContext(source, context, { filename: 'src/content.js' });
 
