@@ -13,6 +13,7 @@
 | `edge-stop4.log` | （弃用手法，仅存档） | 方法论桩：`Target.closeTarget` 拖垮 CDP 的原始记录 |
 | `chrome-baseline-run1/2.log`、`chrome-diag7.log` | （Chrome 对照过程） | Chrome 基线桩：stable 152 无法 `--load-extension` 加载未打包扩展 |
 | `docs/edge-phase1-conclusion-dev2.md`（上级目录） | — | 平台语义桩：§2/§3（SW 回收 ≠ 完整重启两边界） |
+| `edge-idle-evidence.json` + `edge-idle-probe-run.log` | `scripts/edge-idle-wake-probe.mjs` | **#22 idle 收口**：自然回收（30.0s）→ 唤醒前 badge 已清 `""` + pending 非空 → 唤醒后 boot 重派生 `!`（决定性）；pending=[] + 幽灵 `!` → 唤醒收敛 `""`。加载源 = `__r22tmp` @ `aef9ec7` |
 
 平台语义桩的独立复测入口 = `scripts/edge-badge-persist-diag.mjs`（输出 S1 boot / S2 write / S3 restart 三态，直接观察跨重启 badge 归零与 id 稳定性）。
 
@@ -32,6 +33,12 @@ CHROME_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
 # 3. 跨重启边界探针（平台语义桩，期望 S3 badge 回 ""、id 稳定）
 CHROME_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
   node scripts/edge-badge-persist-diag.mjs
+
+# 4. #22 idle 收口探针（自然回收+唤醒重派生+幽灵收敛，见 edge-idle-evidence.json）
+#    加载源须为 #22 分支（boot 重派生块存在），基线分支无此块：
+#    git worktree add --detach /tmp/r22-load __r22tmp   # @ aef9ec7
+CHROME_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+  node scripts/edge-idle-wake-probe.mjs
 ```
 
 注：日志归档为 2026-09-03 本机运行原始输出，非重跑生成；复测以命令现跑结果为准。
