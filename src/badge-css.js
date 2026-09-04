@@ -261,7 +261,8 @@
       }
 
       [data-refresh-open-items]:focus-visible,
-      [data-open-item]:focus-visible {
+      [data-open-item]:focus-visible,
+      [data-open-items-load-more]:focus-visible {
         outline: 2px solid #0969da;
         outline-offset: -2px;
       }
@@ -345,7 +346,7 @@
 
       [data-open-items-filter][aria-pressed="true"] {
         background: #ddf4ff;
-        color: #0969da;
+        color: #0550ae;
       }
 
       [data-open-items-filter]:focus-visible {
@@ -497,7 +498,7 @@
         padding: 1px 6px;
         border-radius: 9px;
         background: rgba(9, 105, 218, 0.12);
-        color: #0969da;
+        color: #0550ae;
         font-size: 11px;
         line-height: 16px;
       }
@@ -535,7 +536,7 @@
 
       [data-copy-reference][data-copy-state="success"],
       [data-copy-reference][data-copy-state="success"]:hover {
-        color: #1f883d;
+        color: #0f6d2e;
       }
 
       [data-copy-icon] {
