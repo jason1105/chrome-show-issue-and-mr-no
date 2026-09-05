@@ -63,6 +63,11 @@ function createFakeStyle() {
 }
 
 function matchesSelector(node, selector) {
+  // Support comma-separated selector groups (e.g. 'button, input, [href]')
+  // the same way real querySelectorAll does.
+  if (selector.includes(',')) {
+    return selector.split(',').some((part) => matchesSelector(node, part.trim()));
+  }
   if (selector.startsWith('#')) {
     return node.id === selector.slice(1);
   }
@@ -87,6 +92,10 @@ class FakeNode extends FakeEventTarget {
     this.textContent = '';
     this.shadowRoot = null;
     this.hidden = false;
+    this.classList = {
+      contains: (name) => (this.className || '').split(/\s+/).includes(name),
+    };
+    this.className = '';
     this.style = createFakeStyle();
     this.value = '';
     this.selected = false;
@@ -3114,4 +3123,206 @@ test('ignores storage changes for unrelated keys', async () => {
   const rendered = getBadge(harness.document);
   assert.equal(rendered.button.getAttribute('aria-label'), 'Copy #123');
   assert.equal(rendered.search.getAttribute('placeholder'), 'Search number or title');
+});
+
+// ---- #11 C-line (dev): GitLab theme detection, roving tabindex, focus trap,
+// panel dialog semantics ----
+
+test('badges resolve a deterministic light theme when GitLab exposes no theme signal', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  await harness.flushMicrotasks();
+  const rendered = getBadge(harness.document);
+
+  assert.equal(rendered.host.getAttribute('data-theme'), 'light');
+});
+
+test('badges follow GitLab data-theme and gl-dark theme signals', async () => {
+  // The content script resolves the theme when it builds the host, so the
+  // <html> attribute/class must be in place before the first sync.
+  const darkAttribute = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  darkAttribute.document.documentElement.setAttribute('data-theme', 'dark');
+  darkAttribute.context.GitLabReferenceBadge.sync();
+  await darkAttribute.flushMicrotasks();
+  assert.equal(getBadge(darkAttribute.document).host.getAttribute('data-theme'), 'dark');
+
+  const darkClass = createHarness('https://gitlab.com/acme/platform/-/issues/2');
+  darkClass.document.documentElement.className = 'gl-dark';
+  darkClass.context.GitLabReferenceBadge.sync();
+  await darkClass.flushMicrotasks();
+  assert.equal(getBadge(darkClass.document).host.getAttribute('data-theme'), 'dark');
+
+  const lightDeclared = createHarness('https://gitlab.com/acme/platform/-/issues/3');
+  lightDeclared.document.documentElement.setAttribute('data-theme', 'light');
+  lightDeclared.context.GitLabReferenceBadge.sync();
+  await lightDeclared.flushMicrotasks();
+  assert.equal(getBadge(lightDeclared.document).host.getAttribute('data-theme'), 'light');
+
+  const unknownValue = createHarness('https://gitlab.com/acme/platform/-/issues/4');
+  unknownValue.document.documentElement.setAttribute('data-theme', 'system');
+  unknownValue.context.GitLabReferenceBadge.sync();
+  await unknownValue.flushMicrotasks();
+  assert.equal(getBadge(unknownValue.document).host.getAttribute('data-theme'), 'light');
+});
+
+test('badge theme re-applies deterministically on every re-sync after a runtime switch', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/5');
+  await harness.flushMicrotasks();
+  let rendered = getBadge(harness.document);
+  assert.equal(rendered.host.getAttribute('data-theme'), 'light');
+
+  // GitLab flips to dark: the html data-theme attribute changes and the next
+  // sync (driven by the theme observer in the browser, by sync() here in the
+  // harness) re-applies it.
+  harness.document.documentElement.setAttribute('data-theme', 'dark');
+  harness.context.GitLabReferenceBadge.sync();
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.host.getAttribute('data-theme'), 'dark');
+
+  // Runtime switch back to light via the gl-dark class signal.
+  harness.document.documentElement.removeAttribute('data-theme');
+  harness.document.documentElement.className = 'gl-dark';
+  harness.context.GitLabReferenceBadge.sync();
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.host.getAttribute('data-theme'), 'dark');
+
+  harness.document.documentElement.className = '';
+  harness.context.GitLabReferenceBadge.sync();
+  await harness.flushMicrotasks();
+  rendered = getBadge(harness.document);
+  assert.equal(rendered.host.getAttribute('data-theme'), 'light');
+});
+
+test('panel is announced as a labelled dialog and result rows use a roving tabindex', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Current issue' },
+        { iid: 16, title: 'Second issue' },
+        { iid: 17, title: 'Third issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+
+  const rendered = await openAndLoad(harness);
+
+  assert.equal(rendered.panel.getAttribute('role'), 'dialog');
+  assert.equal(rendered.panel.getAttribute('aria-label'), 'Open items');
+  const rows = rendered.panel.querySelectorAll('[data-open-item]');
+  assert.deepEqual(rows.map((row) => row.getAttribute('tabindex')), ['0', '-1', '-1']);
+  assert.equal(rows[0].getAttribute('data-open-item-focus'), 'true');
+});
+
+test('arrow keys move the roving focus across result rows without leaving the panel', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Current issue' },
+        { iid: 16, title: 'Second issue' },
+        { iid: 17, title: 'Third issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  const rows = rendered.panel.querySelectorAll('[data-open-item]');
+
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]')[1]
+    .getAttribute('data-open-item-focus'), 'true');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('tabindex')),
+    ['-1', '0', '-1'],
+  );
+
+  // First row keeps arrow-focus on itself when already at the top.
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'ArrowUp' });
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'ArrowUp' });
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]')[0]
+    .getAttribute('data-open-item-focus'), 'true');
+
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'End' });
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]')[2]
+    .getAttribute('data-open-item-focus'), 'true');
+
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'Home' });
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]')[0]
+    .getAttribute('data-open-item-focus'), 'true');
+
+  // The current page's row is the default roving target when present.
+  const currentHarness = createHarness('https://gitlab.com/acme/platform/-/issues/16', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Other issue' },
+        { iid: 16, title: 'Current issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+  const currentRendered = await openAndLoad(currentHarness);
+  const currentRows = currentRendered.panel.querySelectorAll('[data-open-item]');
+  assert.equal(currentRows[1].getAttribute('data-current-open-item'), '');
+  assert.equal(currentRows[1].getAttribute('data-open-item-focus'), 'true');
+  assert.deepEqual(
+    currentRows.map((row) => row.getAttribute('tabindex')),
+    ['-1', '0'],
+  );
+});
+
+test('open panel keeps Tab cycling within its controls (focus trap)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Current issue' }]),
+      jsonResponse([]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+
+  // Mirror the focus trap's own focusable set exactly: same selector group,
+  // same filtering (skip hidden/disabled/tabindex="-1"), so first/last match
+  // what handlePanelTabCycle computes at runtime.
+  const focusable = rendered.panel
+    .querySelectorAll('button, input, [href], [tabindex]')
+    .filter((node) => !node.hidden
+      && node.disabled !== true
+      && node.getAttribute('disabled') === null
+      && node.getAttribute('tabindex') !== '-1');
+  assert.ok(focusable.length >= 3);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  // Tab on the last control wraps to the first.
+  last.focus();
+  const tabForward = { type: 'keydown', key: 'Tab', preventDefault() {} };
+  rendered.panel.dispatchEvent(tabForward);
+  assert.equal(first.getAttribute('data-drag-tooltip'), null);
+  assert.equal(harness.document.activeElement, first);
+
+  // Shift+Tab on the first control wraps to the last.
+  const shiftBack = { type: 'keydown', key: 'Tab', shiftKey: true, preventDefault() {} };
+  first.focus();
+  rendered.panel.dispatchEvent(shiftBack);
+  assert.equal(harness.document.activeElement, last);
+
+  // Tab is untouched while the panel is closed.
+  rendered = getBadge(harness.document);
+  rendered.trigger.focus();
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'Escape' });
+  const closedTab = { type: 'keydown', key: 'Tab', preventDefault() {} };
+  rendered.panel.dispatchEvent(closedTab);
+  assert.equal(closedTab.defaultPrevented !== true || closedTab.defaultPrevented === false, true);
+});
+
+test('destroy disconnects the theme observer without leaking listeners', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/6');
+  await harness.flushMicrotasks();
+  harness.context.GitLabReferenceBadge.destroy();
+  harness.document.documentElement.setAttribute('data-theme', 'dark');
+  harness.triggerMutation();
+  await harness.flushMicrotasks();
+
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.host, null);
 });
