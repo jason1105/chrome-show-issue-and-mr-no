@@ -3201,7 +3201,7 @@ test('badge theme re-applies deterministically on every re-sync after a runtime 
 // @media (prefers-color-scheme: dark) block. The bare :host default keeps the
 // light theme as the fallback when the attribute is 'light'.
 
-test('BADGE_CSS carries a :host([data-theme="dark"]) consumer rule', () => {
+test('BADGE_CSS carries the data-theme consumer selectors (dark, light, no-theme fallback)', () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
   return harness.flushMicrotasks().then(() => {
     const rendered = getBadge(harness.document);
@@ -3210,6 +3210,13 @@ test('BADGE_CSS carries a :host([data-theme="dark"]) consumer rule', () => {
     // The dark theme is driven by the host's data-theme attribute, not by the
     // OS media query. The consumer rule must exist on the injected stylesheet.
     assert.match(css, /:host\(\[data-theme="dark"\]\)/);
+
+    // The merged light base at the top explicitly matches the light theme and
+    // the no-attribute fallback, so the layout shell applies when the host is
+    // 'light' or has no attribute — no dark flash / no broken layout.
+    assert.match(css, /:host,\s*\n\s*:host\(\[data-theme="light"\]\),\s*\n\s*:host\(:not\(\[data-theme\]\)\)\s*\{/);
+    assert.match(css, /:host\(\[data-theme="light"\]\)/);
+    assert.match(css, /:host\(:not\(\[data-theme\]\)\)/);
 
     // The dark values mirror what the @media block applies for the same
     // elements — badge background, panel background, controls, text colors.
@@ -3246,12 +3253,15 @@ test('light theme falls through to the bare :host default (no dark styles)', asy
   // carries the light background. Dark values live only under the
   // :host([data-theme="dark"]) selector, never at the bare :host level.
   const css = rendered.style.textContent;
-  assert.match(css, /:host\s*\{([\s\S]*?)\}\s*\n\s*\[data-reference-badge\]/);
+  // The merged light base (bare :host, light, and no-theme fallback) is the
+  // layout shell applied by default; the first light-colored rule is
+  // [data-reference-badge] right after it.
+  assert.match(css, /:host,\s*\n\s*:host\(\[data-theme="light"\]\),\s*\n\s*:host\(:not\(\[data-theme\]\)\)\s*\{([\s\S]*?)\}\s*\n\s*\[data-reference-badge\]/);
   assert.match(css, /\[data-reference-badge\][\s\S]*background:\s*#ffffff/);
-  // The bare :host block (the layout shell before any [data-*] rule) must not
+  // The base host block (the layout shell before any [data-*] rule) must not
   // declare a dark background — dark is scoped to the data-theme selector only.
-  const bareHost = css.split(/\n\s*\[data-reference-badge\]/, 1)[0];
-  assert.ok(!bareHost.includes('#24272d'), 'bare :host must stay light');
+  const baseHost = css.split(/\n\s*\[data-reference-badge\]/, 1)[0];
+  assert.ok(!baseHost.includes('#24272d'), 'bare host block must stay light');
 });
 
 test('panel is announced as a labelled dialog and result rows use a roving tabindex', async () => {

@@ -8,7 +8,9 @@
   root.GitLabReferenceBadgeCss = api;
 })(typeof globalThis === 'object' ? globalThis : this, function createBadgeCss(root) {
   const BADGE_CSS = `
-      :host {
+      :host,
+      :host([data-theme="light"]),
+      :host(:not([data-theme])) {
         all: initial;
         position: fixed !important;
         top: var(--reference-top) !important;
@@ -716,9 +718,11 @@
 
       /* #24 B2: consume the host's data-theme so the badge follows GitLab's own
          theme (dark when GitLab is dark), not the OS preference. The content
-         script guarantees the host attribute is always 'dark' | 'light' — never
-         left unset — so these rules have no indeterminate flash. Light falls
-         through to the base styles above via the bare :host default. */
+         script drives the host attribute; dark is consumed here, while light
+         and the no-attribute fallback are handled by the merged base :host
+         selector above (:host, :host([data-theme="light"]),
+         :host(:not([data-theme]))). The bare :host layout block applies to all
+         three, keeping the light theme as the default with no dark flash. */
       :host([data-theme="dark"]) {
         [data-reference-badge] {
           border-color: rgba(255, 255, 255, 0.25);
