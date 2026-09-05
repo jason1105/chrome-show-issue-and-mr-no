@@ -1125,9 +1125,20 @@ test('keeps the latest copy result when clicks complete out of order', async () 
   assert.deepEqual(harness.execCommandCalls, []);
 });
 
-test('uses DOM mutations to detect URL changes and removes stale badges', () => {
-  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/5');
+test('uses DOM mutations to detect URL changes and removes stale badges', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/5', {
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 6,
+        user: { showOnAllRepoPages: false },
+        userOverrides: { showOnAllRepoPages: true },
+      },
+    },
+  });
 
+  // Let the async config load settle so the effective (off) preference,
+  // not the in-memory default, drives the first render.
+  await harness.flushMicrotasks();
   harness.location.href = 'https://gitlab.com/acme/platform/-/issues';
   harness.triggerMutation();
   harness.flushAnimationFrames();
@@ -2498,6 +2509,13 @@ test('ignores navigation responses after leaving a detail page', async () => {
   const mergeRequests = deferred();
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
     fetchResults: [issues, mergeRequests],
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 6,
+        user: { showOnAllRepoPages: false },
+        userOverrides: { showOnAllRepoPages: true },
+      },
+    },
   });
 
   getBadge(harness.document).trigger.dispatchEvent({ type: 'focus' });
@@ -2924,7 +2942,15 @@ test('full-repo mode shows a project badge on non-detail pages with open item co
 });
 
 test('full-repo mode keeps the badge hidden by default on non-detail pages', async () => {
-  const harness = createHarness('https://gitlab.com/acme/platform/-/tree/main/src');
+  const harness = createHarness('https://gitlab.com/acme/platform/-/tree/main/src', {
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 6,
+        user: { showOnAllRepoPages: false },
+        userOverrides: { showOnAllRepoPages: true },
+      },
+    },
+  });
   await harness.flushMicrotasks();
 
   assert.equal(getBadge(harness.document).host, null);
@@ -2959,7 +2985,15 @@ test('full-repo mode does not show the badge on non-project GitLab routes', asyn
 });
 
 test('toggling full-repo mode via storage changes updates the badge', async () => {
-  const harness = createHarness('https://gitlab.com/acme/platform/-/blob/main/README.md');
+  const harness = createHarness('https://gitlab.com/acme/platform/-/blob/main/README.md', {
+    storageData: {
+      gitlabReferenceConfig: {
+        version: 6,
+        user: { showOnAllRepoPages: false },
+        userOverrides: { showOnAllRepoPages: true },
+      },
+    },
+  });
   await harness.flushMicrotasks();
   assert.equal(getBadge(harness.document).host, null);
 
