@@ -23,6 +23,7 @@
   const parseGitLabProjectPage = root.GitLabReferenceParser?.parseGitLabProjectPage;
   const configApi = root.GitLabReferenceConfig;
   const uiApi = root.GitLabReferenceUi;
+  const badgeCssApi = root.GitLabReferenceBadgeCss;
   const i18nApi = root.GitLabReferenceI18n;
   const t = (key, substitutions) => (
     i18nApi && typeof i18nApi.getMessage === 'function'
@@ -67,6 +68,7 @@
   let navigationCloseTimerId = null;
   let copyGeneration = 0;
   let observer = null;
+  let themeObserver = null;
   let destroyed = false;
   let renderingNavigationPanel = false;
   let suppressNextFocusOpen = false;
@@ -142,6 +144,31 @@
     } catch {
       return '';
     }
+  }
+
+  // #11: resolve the active GitLab theme deterministically. The badge lives
+  // inside the GitLab page, so it must follow GitLab's own theme (dark when
+  // GitLab is in dark mode), not the operating-system preference. The host
+  // attribute is always one of "dark"|"light" — never left unset — so B2's
+  // :host([data-theme="dark"]) rules have no indeterminate flash.
+  function resolveGitLabTheme() {
+    const html = root.document?.documentElement;
+    if (!html) return 'light';
+    const declared = typeof html.getAttribute === 'function' ? html.getAttribute('data-theme') : null;
+    if (typeof declared === 'string' && declared) {
+      return declared.toLowerCase() === 'dark' ? 'dark' : 'light';
+    }
+    // Older GitLab themes (pre data-theme) signal dark mode via the gl-dark
+    // class on <html>.
+    if (html.classList && typeof html.classList.contains === 'function' && html.classList.contains('gl-dark')) {
+      return 'dark';
+    }
+    return 'light';
+  }
+
+  function applyThemeToHost(host = root.document.getElementById(HOST_ID)) {
+    if (!host) return;
+    host.setAttribute('data-theme', resolveGitLabTheme());
   }
 
   function getVisibleKinds() {
@@ -1138,6 +1165,7 @@
     } finally {
       renderingNavigationPanel = false;
     }
+    applyRovingTabindex(results);
   }
 
   function renderNavigationPanel(host, { rebuildStatic = false } = {}) {
@@ -1302,6 +1330,7 @@
     } finally {
       renderingNavigationPanel = false;
     }
+    applyRovingTabindex(results);
   }
 
   function abortStaleNavigationRequests() {
@@ -1601,6 +1630,99 @@
     }
   }
 
+  // #11: roving tabindex over the open-item result rows so arrow-key
+  // navigation works without leaving the panel. Exactly one row is
+  // focusable (tabindex="0"); the rest are tabindex="-1". The currently
+  // focused row keeps tabindex="0" across re-renders so keyboard focus is
+  // never lost when the list refreshes.
+  function getRovingFocusTarget(panel) {
+    const rows = panel?.querySelectorAll('[data-open-item]');
+    if (!rows?.length) return null;
+    for (const row of rows) {
+      if (row.getAttribute('data-open-item-focus') === 'true') return row;
+    }
+    const current = panel.querySelector('[data-current-open-item]');
+    return current || rows[0];
+  }
+
+  function applyRovingTabindex(panel) {
+    if (!panel) return;
+    const rows = panel.querySelectorAll('[data-open-item]');
+    if (!rows.length) return;
+    const focused = getRovingFocusTarget(panel);
+    for (const row of rows) {
+      const isTarget = row === focused;
+      row.setAttribute('tabindex', isTarget ? '0' : '-1');
+      if (isTarget) row.setAttribute('data-open-item-focus', 'true');
+      else row.removeAttribute('data-open-item-focus');
+    }
+  }
+
+  // #11: focus trap — when the panel is open, Tab/Shift+Tab cycle within the
+  // panel's focusable controls instead of escaping into the page behind it.
+  // Filters manually (element type + attribute checks) instead of :not()
+  // selector chains so behavior is identical in real DOM and the test harness.
+  function isPanelFocusable(node) {
+    if (!node || node.hidden) return false;
+    if (node.disabled === true) return false;
+    if (node.getAttribute('disabled') !== null) return false;
+    if (node.getAttribute('tabindex') === '-1') return false;
+    return node.tagName === 'BUTTON' || node.tagName === 'INPUT'
+      || node.getAttribute('href') !== null
+      || node.getAttribute('tabindex') !== null;
+  }
+
+  function handlePanelTabCycle(event) {
+    if (!navigation.open) return;
+    if (event.key !== 'Tab') return;
+    const host = root.document.getElementById(HOST_ID);
+    const panel = host?.shadowRoot?.querySelector('[data-open-items-panel]');
+    if (!panel || panel.hidden) return;
+    const focusable = Array.from(panel.querySelectorAll('button, input, [href], [tabindex]'))
+      .filter(isPanelFocusable);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = host.shadowRoot.activeElement;
+    if (event.shiftKey) {
+      if (active === first || !host.contains(active)) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else if (active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  // #11: arrow-key navigation across the open-item result rows (roving
+  // tabindex), with Home/End jumping to the first/last row.
+  function handleOpenItemsKeydown(event) {
+    if (!navigation.open) return;
+    const host = root.document.getElementById(HOST_ID);
+    const panel = host?.shadowRoot?.querySelector('[data-open-items-panel]');
+    if (!panel || panel.hidden) return;
+    const rows = Array.from(panel.querySelectorAll('[data-open-item]'));
+    if (!rows.length) return;
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp'
+      && event.key !== 'Home' && event.key !== 'End') return;
+    const focused = getRovingFocusTarget(panel);
+    let index = rows.indexOf(focused);
+    if (index < 0) index = event.key === 'ArrowUp' ? rows.length : -1;
+    if (event.key === 'ArrowDown') index = Math.min(index + 1, rows.length - 1);
+    else if (event.key === 'ArrowUp') index = Math.max(index - 1, 0);
+    else if (event.key === 'Home') index = 0;
+    else if (event.key === 'End') index = rows.length - 1;
+    const next = rows[index];
+    if (!next) return;
+    event.preventDefault();
+    event.stopPropagation();
+    for (const row of rows) row.removeAttribute('data-open-item-focus');
+    next.setAttribute('data-open-item-focus', 'true');
+    applyRovingTabindex(panel);
+    next.focus();
+  }
+
   function handleSearchKeyboardEvent(event) {
     if (event.type === 'keydown') handleNavigationKeydown(event);
     event.stopPropagation();
@@ -1684,7 +1806,7 @@
 
     const shadow = host.attachShadow({ mode: 'open' });
     const style = root.document.createElement('style');
-    style.textContent = uiApi.BADGE_CSS;
+    style.textContent = badgeCssApi.BADGE_CSS;
 
     const badge = root.document.createElement('div');
     badge.setAttribute('data-reference-badge', '');
@@ -1751,9 +1873,15 @@
     const panel = root.document.createElement('div');
     panel.id = PANEL_ID;
     panel.setAttribute('data-open-items-panel', '');
+    // #11: give the open-items floating panel a dialog landmark with a label
+    // so screen readers announce it and its focus trap is distinguishable.
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', t('panelHeading'));
     panel.addEventListener('mouseenter', handleNavigationEnter);
     panel.addEventListener('mouseleave', scheduleNavigationClose);
     panel.addEventListener('keydown', handleNavigationKeydown);
+    panel.addEventListener('keydown', handlePanelTabCycle);
+    panel.addEventListener('keydown', handleOpenItemsKeydown);
     panel.hidden = true;
 
     badge.append(handle, trigger, button);
@@ -1761,6 +1889,7 @@
     shadow.addEventListener('focusout', handleNavigationFocusOut);
     root.document.documentElement.append(host);
     root.document.addEventListener('pointerdown', handleDocumentPointerDown);
+    applyThemeToHost(host);
     applyPosition(host);
     return host;
   }
@@ -1813,6 +1942,7 @@
 
     const host = root.document.getElementById(HOST_ID) || createBadgeHost();
     host.setAttribute('data-touch-drag', activeConfig.touchDrag ? 'true' : 'false');
+    applyThemeToHost(host);
     const { badge, trigger, label, button } = getBadgeParts(host);
     const copyText = formatCopyText(reference);
     const currentKind = badge.getAttribute('data-kind');
@@ -1863,6 +1993,26 @@
     }
   }
 
+  // #11: GitLab can switch themes at runtime (theme toggle, system-synced
+  // dark mode). Watch the <html> class/data-theme and re-apply the badge's
+  // data-theme so it keeps following GitLab without a full re-sync.
+  function handleThemeMutation(mutations) {
+    if (destroyed) return;
+    let themeChanged = false;
+    for (const mutation of mutations) {
+      if (mutation.type !== 'attributes') continue;
+      if (mutation.target === root.document?.documentElement
+        && (mutation.attributeName === 'class' || mutation.attributeName === 'data-theme')) {
+        themeChanged = true;
+        break;
+      }
+    }
+    if (themeChanged) {
+      const host = root.document.getElementById(HOST_ID);
+      if (host) applyThemeToHost(host);
+    }
+  }
+
   function startObserver() {
     if (observer || !root.document.documentElement) return;
 
@@ -1870,6 +2020,16 @@
     observer.observe(root.document.documentElement, {
       childList: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
+    });
+    // A second observer targets the <html> node itself: the document-wide
+    // observer above only reports attribute changes for elements already in
+    // the tree, while GitLab swaps themes by rewriting class on <html>.
+    themeObserver = new root.MutationObserver(handleThemeMutation);
+    themeObserver.observe(root.document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
     });
   }
 
@@ -1893,6 +2053,8 @@
     cancelDrag();
     observer?.disconnect();
     observer = null;
+    themeObserver?.disconnect();
+    themeObserver = null;
     for (const { target, eventName, listener } of navigationEventListeners) {
       target.removeEventListener(eventName, listener);
     }

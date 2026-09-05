@@ -78,8 +78,8 @@ test('builds deduplicated match patterns with explicit ports', () => {
   assert.deepEqual(buildMatchPatterns(['nope', '', null]), []);
 });
 
-test('keeps parser → config → i18n → ui → content order at document_start', () => {
-  assert.deepEqual(CONTENT_SCRIPT_FILES, ['src/parser.js', 'src/config.js', 'src/i18n.js', 'src/ui.js', 'src/content.js']);
+test('keeps parser → config → i18n → badge-css → ui → content order at document_start', () => {
+  assert.deepEqual(CONTENT_SCRIPT_FILES, ['src/parser.js', 'src/config.js', 'src/i18n.js', 'src/badge-css.js', 'src/ui.js', 'src/content.js']);
 });
 
 test('registers the navigation hook in the MAIN world', () => {

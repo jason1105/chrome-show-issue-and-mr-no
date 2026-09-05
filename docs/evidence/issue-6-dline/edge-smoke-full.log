@@ -1,0 +1,62 @@
+[edge-smoke:boot] Edge=/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge
+[edge-smoke:profile] /var/folders/rm/7p8yg6s52_3bg_c9975gv8080000gn/T/edge-phase1-jhC5Jk
+[edge-smoke:ext] loaded, id=ceikgpeomcdgolonadmojochagppfejh
+[edge-smoke:case1] read badge on clean profile
+[edge-smoke:PASS] 1. clean-profile badge is "" — getBadgeText={""}
+[edge-smoke:case2] pending storage write/read round-trip in Edge
+[edge-smoke:PASS] 2. pending storage persisted — storage=["https://gitlab.example.com/*"]
+[edge-smoke:case3] setBadgeText("!") then getBadgeText round-trip
+[edge-smoke:PASS] 3. badge write/read round-trip preserves "!" — round-trip="!"
+[edge-smoke:PASS] 4. badge clear returns to "" — round-trip=""
+[edge-smoke:case5] real in-session SW reclaim + badge read from live extension page
+[edge-smoke:PASS] 5a. badge set = "!" — got="!"
+[edge-smoke:PASS] 5b. live-page badge read baseline = "!" — page-read="!"
+[edge-smoke:case5] SW Stop clicked (real reclaim) = true
+[edge-smoke:PASS] 5c. badge persisted across REAL SW reclaim = "!" — after-reclaim(page-read)="!"
+[edge-smoke:race] rapid set/clear sequence, expecting deterministic final ""
+[edge-smoke:PASS] 6. serialized set/clear -> final "" — final=""
+[edge-smoke:summary] PASS=8 FAIL=0
+{
+  "results": [
+    {
+      "name": "1. clean-profile badge is \"\"",
+      "ok": true,
+      "detail": "getBadgeText={\"\"}"
+    },
+    {
+      "name": "2. pending storage persisted",
+      "ok": true,
+      "detail": "storage=[\"https://gitlab.example.com/*\"]"
+    },
+    {
+      "name": "3. badge write/read round-trip preserves \"!\"",
+      "ok": true,
+      "detail": "round-trip=\"!\""
+    },
+    {
+      "name": "4. badge clear returns to \"\"",
+      "ok": true,
+      "detail": "round-trip=\"\""
+    },
+    {
+      "name": "5a. badge set = \"!\"",
+      "ok": true,
+      "detail": "got=\"!\""
+    },
+    {
+      "name": "5b. live-page badge read baseline = \"!\"",
+      "ok": true,
+      "detail": "page-read=\"!\""
+    },
+    {
+      "name": "5c. badge persisted across REAL SW reclaim = \"!\"",
+      "ok": true,
+      "detail": "after-reclaim(page-read)=\"!\""
+    },
+    {
+      "name": "6. serialized set/clear -> final \"\"",
+      "ok": true,
+      "detail": "final=\"\""
+    }
+  ]
+}
