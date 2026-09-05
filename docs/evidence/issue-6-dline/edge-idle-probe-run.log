@@ -1,0 +1,20 @@
+{
+  "phases": {
+    "s1_bootEmptyBadge": "",
+    "s1_pendingBefore": null,
+    "s2_badgeAfterSeed": "!",
+    "s3_naturalEviction": true,
+    "s3_badgeWhileDead": "!",
+    "s3b_badgeClearedPreWake": "",
+    "s4_swRespawned": true,
+    "s4_badgeAfterWake": "!",
+    "s5_swStopped": true,
+    "s5_badgeAfterStop": "!",
+    "s5_badgeConvergedEmpty": ""
+  },
+  "timings": {
+    "idleEvictionMs": 30007,
+    "wakeToAliveMs": 519
+  },
+  "extensionId": "cekpggkngbglpincapidkghmgiigbfhe"
+}

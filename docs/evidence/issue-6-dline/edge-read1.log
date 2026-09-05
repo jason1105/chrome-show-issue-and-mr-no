@@ -1,0 +1,5 @@
+clean= "" before= "!"
+page-read before reclaim = "!"
+Stop clicked= true
+page-read AFTER real SW reclaim = "!"
+RESULT {"clean":"","before":"!","afterReclaim":"!","reclaimed":true}
