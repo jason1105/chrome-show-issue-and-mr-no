@@ -8,7 +8,9 @@
   root.GitLabReferenceBadgeCss = api;
 })(typeof globalThis === 'object' ? globalThis : this, function createBadgeCss(root) {
   const BADGE_CSS = `
-      :host {
+      :host,
+      :host([data-theme="light"]),
+      :host(:not([data-theme])) {
         all: initial;
         position: fixed !important;
         top: var(--reference-top) !important;
@@ -591,6 +593,137 @@
       }
 
       @media (prefers-color-scheme: dark) {
+        [data-reference-badge] {
+          border-color: rgba(255, 255, 255, 0.25);
+          background: #24272d;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+          color: #f0f2f5;
+        }
+
+        [data-copy-reference] {
+          border-left-color: rgba(255, 255, 255, 0.2);
+        }
+
+        [data-drag-handle] {
+          border-right-color: rgba(255, 255, 255, 0.2);
+          color: #8b949e;
+        }
+
+        [data-reference-trigger]:hover,
+        [data-copy-reference]:hover,
+        [data-drag-handle]:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #f0f2f5;
+        }
+
+        [data-open-items-panel] {
+          border-color: rgba(255, 255, 255, 0.2);
+          background: #24272d;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+          color: #f0f2f5;
+        }
+
+        [data-open-items-header],
+        [data-open-items-controls],
+        [data-item-state-controls],
+        [data-open-items-group] + [data-open-items-group] {
+          border-color: rgba(255, 255, 255, 0.14);
+        }
+
+        [data-open-items-total],
+        [data-open-items-group-count] {
+          background: rgba(255, 255, 255, 0.12);
+        }
+
+        [data-refresh-open-items],
+        [data-open-items-group-heading],
+        [data-open-items-status],
+        [data-open-items-empty],
+        [data-last-refresh] {
+          color: #b7bdc8;
+        }
+
+        [data-open-items-search] {
+          border-color: rgba(255, 255, 255, 0.26);
+          background: #1f2227;
+          color: #f0f2f5;
+        }
+
+        [data-open-items-search]::placeholder {
+          color: #8b949e;
+        }
+
+        [data-open-items-filters] {
+          border-color: rgba(255, 255, 255, 0.24);
+        }
+
+        [data-open-items-filter] {
+          border-left-color: rgba(255, 255, 255, 0.16);
+          background: #24272d;
+          color: #b7bdc8;
+        }
+
+        [data-open-items-filter]:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: #ffffff;
+        }
+
+        [data-open-items-filter][aria-pressed="true"] {
+          background: rgba(9, 105, 218, 0.28);
+          color: #79c0ff;
+        }
+
+        [data-refresh-open-items]:hover,
+        [data-open-options]:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+        }
+
+        [data-item-state-label] {
+          color: #b7bdc8;
+        }
+
+        [data-open-options] {
+          color: #b7bdc8;
+        }
+
+        [data-open-items-message] {
+          border-color: #9e6a03;
+          background: #4d2d00;
+          color: #ffd18a;
+        }
+
+        a[data-open-item]:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        [data-open-item-iid] {
+          color: #56d364;
+        }
+
+        [data-open-item][data-kind="merge-request"] [data-open-item-iid] {
+          color: #d2a8ff;
+        }
+
+        [data-current-open-item] {
+          background: rgba(9, 105, 218, 0.24);
+          color: #ffffff;
+        }
+
+        [data-kind="merge-request"] {
+          border-color: rgba(117, 170, 255, 0.55);
+          color: #9ac1ff;
+        }
+      }
+
+      /* #24 B2: consume the host's data-theme so the badge follows GitLab's own
+         theme (dark when GitLab is dark), not the OS preference. The content
+         script drives the host attribute; dark is consumed here, while light
+         and the no-attribute fallback are handled by the merged base :host
+         selector above (:host, :host([data-theme="light"]),
+         :host(:not([data-theme]))). The bare :host layout block applies to all
+         three, keeping the light theme as the default with no dark flash. */
+      :host([data-theme="dark"]) {
         [data-reference-badge] {
           border-color: rgba(255, 255, 255, 0.25);
           background: #24272d;
