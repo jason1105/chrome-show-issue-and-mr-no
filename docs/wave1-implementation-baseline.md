@@ -1,7 +1,7 @@
 # Wave 1 实施基准（#11 无障碍 + #6 Edge Phase 1）
 
 > architect 交付 · manager 拍板版固化 · 2026-09-03
-> 本文是 Step 0 之后三线并行及后续波次的**唯一实施基准**。行号均已按拆分后 + UI B1 第一波之后的当前工作区实测核对，非拆分前旧号。
+> 本文是 Step 0 之后三线并行及后续波次的**唯一实施基准**。行号均已按 `origin/main`（=`40f26b6`，#24 已合入后的源码状态）实测核对，非拆分前旧号。
 
 ---
 
@@ -18,7 +18,7 @@
 | `src/options.css:86` | `@media (prefers-color-scheme: dark) {`（系统深色分支，保留） |
 | 测试 | 186/186（origin/main 基线，含 #21 config + #26 合并增量） |
 
-**Step 0 拆分已完成**：GitLab 侧 `2d6231b`（parent `76fe029`）、GitHub 侧 `52732b1`（parent `28a2b11`），BADGE_CSS 逐字节一致（18552 字符），manager/dev/architect 三方独立复核 PASS。**Step 0 无待开发工作，唯一待办是「合入 main」。**
+**Step 0 拆分已完成**：GitLab 侧 `2d6231b`（parent `76fe029`）、GitHub 侧 `52732b1`（parent `28a2b11`），BADGE_CSS 逐字节一致（18552 字符，为 Step 0 时点快照；现 `origin/main` 已随 #24 B2 合入增至 22312 字符），manager/dev/architect 三方独立复核 PASS。**Step 0 本身无待开发工作**；其中 `52732b1` 已为 main 祖先，GitLab 侧 `2d6231b` 尚未合入 main（合入须 admin 明确指令）。
 
 **合并路径（manager 已拍板）**：GitHub PR #15 为正式入口，GitLab MR !27 仅镜像同步、不作决策载体。合入须 admin 明确指令（红线）。
 
@@ -50,7 +50,7 @@
 
 ## 四、三线内容与边界
 
-### B（@UI，第一波 B1 已交付并冻结，待合并信号 rebase 提 MR）
+### B（@UI，第一波 B1 已交付并冻结，第二波 #24 已合入 main）
 - 对比度 4.5:1（`badge-css.js` + `options.css`）
 - `:focus-visible` 补漏（只补缺，不改已有实现）
 - 空态/骨架视觉
