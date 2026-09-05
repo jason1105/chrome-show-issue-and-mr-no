@@ -3194,6 +3194,66 @@ test('badge theme re-applies deterministically on every re-sync after a runtime 
   assert.equal(rendered.host.getAttribute('data-theme'), 'light');
 });
 
+// ---- #24 B2: the shadow host consumes data-theme so the badge follows the
+// GitLab theme, not the OS preference. The content script guarantees the host
+// attribute is always 'dark' | 'light', and the injected shadow-root stylesheet
+// carries a :host([data-theme="dark"]) rule whose dark values mirror the
+// @media (prefers-color-scheme: dark) block. The bare :host default keeps the
+// light theme as the fallback when the attribute is 'light'.
+
+test('BADGE_CSS carries a :host([data-theme="dark"]) consumer rule', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  return harness.flushMicrotasks().then(() => {
+    const rendered = getBadge(harness.document);
+    const css = rendered.style.textContent;
+
+    // The dark theme is driven by the host's data-theme attribute, not by the
+    // OS media query. The consumer rule must exist on the injected stylesheet.
+    assert.match(css, /:host\(\[data-theme="dark"\]\)/);
+
+    // The dark values mirror what the @media block applies for the same
+    // elements — badge background, panel background, controls, text colors.
+    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-reference-badge\][\s\S]*background:\s*#24272d/);
+    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-reference-badge\][\s\S]*color:\s*#f0f2f5/);
+    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-open-items-panel\][\s\S]*background:\s*#24272d/);
+    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-open-items-search\][\s\S]*background:\s*#1f2227/);
+
+    // The OS-preference media query remains as a degradation fallback.
+    assert.match(css, /@media\s*\(prefers-color-scheme:\s*dark\)/);
+  });
+});
+
+test('badge host is marked dark when GitLab is dark so the CSS consumer applies', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/2');
+  harness.document.documentElement.setAttribute('data-theme', 'dark');
+  harness.context.GitLabReferenceBadge.sync();
+  await harness.flushMicrotasks();
+
+  const rendered = getBadge(harness.document);
+  // The host attribute is the attribute the :host([data-theme="dark"]) selector
+  // matches — it must carry 'dark' when GitLab is dark.
+  assert.equal(rendered.host.getAttribute('data-theme'), 'dark');
+});
+
+test('light theme falls through to the bare :host default (no dark styles)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/3');
+  await harness.flushMicrotasks();
+
+  const rendered = getBadge(harness.document);
+  assert.equal(rendered.host.getAttribute('data-theme'), 'light');
+  // The base light theme is the fallback: the bare :host block only sets the
+  // host's layout shell (no background/color), and [data-reference-badge]
+  // carries the light background. Dark values live only under the
+  // :host([data-theme="dark"]) selector, never at the bare :host level.
+  const css = rendered.style.textContent;
+  assert.match(css, /:host\s*\{([\s\S]*?)\}\s*\n\s*\[data-reference-badge\]/);
+  assert.match(css, /\[data-reference-badge\][\s\S]*background:\s*#ffffff/);
+  // The bare :host block (the layout shell before any [data-*] rule) must not
+  // declare a dark background — dark is scoped to the data-theme selector only.
+  const bareHost = css.split(/\n\s*\[data-reference-badge\]/, 1)[0];
+  assert.ok(!bareHost.includes('#24272d'), 'bare :host must stay light');
+});
+
 test('panel is announced as a labelled dialog and result rows use a roving tabindex', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [
