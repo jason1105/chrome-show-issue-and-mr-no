@@ -80,7 +80,7 @@ button { min-height: 34px; padding: 6px 14px; border: 1px solid transparent; bor
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #0969da; outline-offset: 2px; }
 .secondary { border-color: #8c959f; background: #ffffff; color: #1f2328; }
 .primary { border-color: #1f883d; background: #1f883d; color: #ffffff; }
-.status { min-height: 20px; margin: 0; color: #1f883d; font-size: 13px; }
+.status { min-height: 20px; margin: 0; color: #0f6d2e; font-size: 13px; }
 .status[data-status-kind="error"] { color: #cf222e; }
 
 @media (prefers-color-scheme: dark) {
@@ -88,4 +88,6 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   fieldset, select, input[type="number"], .secondary { border-color: #30363d; background: #161b22; }
   .eyebrow, .settings-header > p:last-child { color: #8b949e; }
   .secondary { color: #f0f6fc; }
+  .status { color: #3fb950; }
+  .status[data-status-kind="error"] { color: #f85149; }
 }
