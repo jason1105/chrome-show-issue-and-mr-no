@@ -22,7 +22,7 @@
 
 **合并路径（manager 已拍板）**：GitHub PR #15 为正式入口，GitLab MR !27 仅镜像同步、不作决策载体。合入须 admin 明确指令（红线）。
 
-**B 线状态（UI B1 → B2）**：B1 提交于 `2d6231b` 之上（`f27cd6a`，净改动 2 文件 +8/−5，已推 GitLab origin）。B2（`badge-css.js:595` 主题替换）已完成为 **#24**（PR #26，已合入 `origin/main` `40f26b6`）。
+**B 线状态（UI B1 → B2）**：B1 提交于 `2d6231b` 之上（`f27cd6a`，净改动 2 文件 +8/−5，已推 GitLab origin）。B2（新增 `:host` 三态合并选择器 `:726`，保留 `:595` `@media` 回退）已完成为 **#24**（PR #26，已合入 `origin/main` `40f26b6`）。
 
 ---
 
@@ -85,7 +85,7 @@
 
 1. `src/options.css` 是扩展自有页面，**不跟随 GitLab 主题**；其系统深色分支（`:86` 起）保留，走扩展/OS 偏好，**归 @UI 维护**（options.css 为 UI 独占文件）；dev C 线的 `data-theme` 主题探测**不触碰** options.css。
 2. **不新增** `prefers-color-scheme` 到 `badge-css.js`。
-3. ~~B2 主题替换（`@media` → `:host([data-theme="dark"])`）等 dev C 合并后串行，不抢跑。~~ **B2（#24）已完成并合入 `origin/main`（PR #26），此约束已满足。**
+3. ~~B2 主题改造（`@media` → `:host([data-theme="dark"])`）等 dev C 合并后串行，不抢跑。~~ **B2（#24）已完成并合入 `origin/main`（PR #26，新增 `:host` 三态合并并保留 `@media` 系统深色回退），此约束已满足。**
 4. 提 MR 严禁带入 `dist/`、`node_modules/`、`scripts/`、`screenshots/`、`package-lock.json` 等无关产物。
 5. 合并动作须 admin 明确指令，任何人不得自行 merge。
 
