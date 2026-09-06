@@ -14,7 +14,7 @@
 | `src/content.js:26` | `const badgeCssApi = root.GitLabReferenceBadgeCss;` |
 | `src/content.js:1809` | `style.textContent = badgeCssApi.BADGE_CSS;` |
 | `src/permissions.js:14-21` | `CONTENT_SCRIPT_FILES` 顺序 parser → config → i18n → **badge-css** → ui → content |
-| `src/badge-css.js:595` | `@media (prefers-color-scheme: dark) {`（#24 已替换为 `:host` 三态合并，PR #26） |
+| `src/badge-css.js:595` | `@media (prefers-color-scheme: dark) {`（系统深色回退分支，**保留**；#24 B2 三态合成为**新增** `:host([data-theme="dark"])` 深色块 `:726`，PR #26） |
 | `src/options.css:86` | `@media (prefers-color-scheme: dark) {`（系统深色分支，保留） |
 | 测试 | 186/186（origin/main 基线，含 #21 config + #26 合并增量） |
 
@@ -54,7 +54,7 @@
 - 对比度 4.5:1（`badge-css.js` + `options.css`）
 - `:focus-visible` 补漏（只补缺，不改已有实现）
 - 空态/骨架视觉
-- **第二波（已完成 #24，PR #26 已合入 `origin/main` `40f26b6`）**：`badge-css.js:595` `@media (prefers-color-scheme: dark)` → 三态 `:host` 合并选择器（`dark`/`light`/无属性兜底）
+- **第二波（已完成 #24，PR #26 已合入 `origin/main` `40f26b6`）**：新增 `:host` 三态合并选择器（`dark`/`light`/无属性兜底，`:726`），并保留 `badge-css.js:595` `@media (prefers-color-scheme: dark)` 系统深色回退分支
 
 ### C（@dev，等合并信号）
 - 主题探测：探测 GitLab `gl-dark`/`data-theme`，给 shadow host 打 `data-theme="dark"|"light"`，确定性默认值，不留无属性悬浮态；属性名固定 `data-theme`，禁自造别名。
