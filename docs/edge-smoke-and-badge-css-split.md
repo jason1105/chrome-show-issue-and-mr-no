@@ -13,10 +13,10 @@
 
 Step 0 拆分已由 dev 完成并多轮复核 PASS：
 - GitLab 侧 `2d6231b`（parent `76fe029`），GitHub 侧 `52732b1`（parent `28a2b11`）。
-- BADGE_CSS 逐字节一致（18552 字符）。
+- BADGE_CSS 逐字节一致（18552 字符，为 Step 0 时点快照；现 `origin/main` 已随 #24 B2 合入增至 22312 字符）。
 - `src/badge-css.js` 868 行，UMD 挂 `root.GitLabReferenceBadgeCss`；`src/ui.js` 110 行，BADGE_CSS 残留 0。
 - `npm test` 170/170（GitHub main 基线）/ 171/171（GitLab main 基线）。
-- 唯一待办：**合入 main**（GitHub PR #15 为正式入口，须 admin 明确指令）。
+- 合并状态：GitHub 侧 `52732b1` 已为 `origin/main` 祖先；GitLab 侧 `2d6231b` 尚未合入 main（合入须 admin 明确指令）。Step 0 本身无待开发工作。
 
 **#11 / #6 派工现状（拆分已完成，勿按旧口径重派）：**
 - #11 已派工：B 线 UI B1 已提交 `f27cd6a`（对比度 3 处 + load-more `:focus-visible` 补漏 + options.css 深色 `.status` 补齐，171/171），C 线任务单已预发 dev。
@@ -30,7 +30,7 @@ Step 0 拆分已由 dev 完成并多轮复核 PASS：
 
 ### 主题探测归属边界（关键，避免 UI/dev 误抢）
 
-- CSS 侧：`@media (prefers-color-scheme: dark)`（现 `src/badge-css.js:595`）改 `:host([data-theme="dark"]) ...` → **UI（第二波，等 dev C 合并）**。
+- CSS 侧：`src/badge-css.js:726` 已含 `:host([data-theme="dark"])` 深色消费块（#24 新增，PR #26 已合入 `origin/main` `40f26b6`）；`src/badge-css.js:595` `@media (prefers-color-scheme: dark)` 作为系统深色**回退分支保留**。**UI 第二波已完成为 #24，无剩余待办**。若后续仍需调整 `:host` 三态，归 **UI**。
 - 「探测 GitLab 主题（`gl-dark` / `data-theme`）并给 host 打 `data-theme` 属性」的 JS → **dev（C 线）**。
 - 属性名固定 `data-theme`，确定性默认值，不留无属性悬浮态，禁自造别名。
 - `src/options.css` 是扩展自有页面，**不跟随 GitLab 主题**；其系统深色分支（`:86`）保留，走扩展/OS 偏好，**归 @UI 维护**（options.css 为 UI 独占文件）；dev C 线的 `data-theme` 探测**不触碰** options.css。
@@ -114,12 +114,13 @@ CHROME_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
 
 **路线 B：WebDriver BiDi（`goog:chromeOptions` 需换 `ms:edgeOptions`）**
 
-`package-smoke.mjs` / `acceptance-issue20.mjs` / `tests/browser.test.js` 三处硬编码 `goog:chromeOptions` 能力键。Edge 驱动（msedgedriver）官方键是 `ms:edgeOptions`。要跑 Edge 需改：
+`tests/browser.test.js` 与两条本地冒烟脚本（`package-smoke.mjs` / `acceptance-issue20.mjs`）均硬编码 `goog:chromeOptions` 能力键。Edge 驱动（msedgedriver）官方键是 `ms:edgeOptions`。要跑 Edge 需改：
 
-- `tests/browser.test.js:191`（`createWebDriverSession` 的能力键）
-- `tests/browser.test.js:648`（`debuggerAddress` 读取）
-- `scripts/package-smoke.mjs:83` + `:88`
-- `scripts/acceptance-issue20.mjs:67` + `:77`
+- `tests/browser.test.js`：`createWebDriverSession` 的能力键 `'goog:chromeOptions'`（`:191`）及其 `debuggerAddress` 读取（`:648`）
+- `scripts/package-smoke.mjs`：`main()` 内 `alwaysMatch` 的 `'goog:chromeOptions'` 能力键（`:83`）及其 `debuggerAddress` 读取（`:88`）
+- `scripts/acceptance-issue20.mjs`：`newSession()` 内 `alwaysMatch` 的 `'goog:chromeOptions'` 能力键（`:67`）及其 `debuggerAddress` 读取（`:77`）
+
+> 注：`scripts/package-smoke.mjs` / `scripts/acceptance-issue20.mjs` 为本地冒烟脚本，当前未纳入 `origin/main` 版本库（脚本入库跟进见 issue #31）。上列函数名/能力键名定位仍可唯一锚定到本地对应实现，待脚本入库后行号以入库版本为准。
 
 > 注：`tests/browser.test.js` 的 `findExecutable` 已支持 `CHROME_PATH` / `CHROMEDRIVER_PATH` 环境变量覆盖，但光靠环境变量不够——能力键硬编码是真正的拦路点。
 
