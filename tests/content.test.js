@@ -3218,12 +3218,23 @@ test('BADGE_CSS carries the data-theme consumer selectors (dark, light, no-theme
     assert.match(css, /:host\(\[data-theme="light"\]\)/);
     assert.match(css, /:host\(:not\(\[data-theme\]\)\)/);
 
-    // The dark values mirror what the @media block applies for the same
-    // elements — badge background, panel background, controls, text colors.
-    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-reference-badge\][\s\S]*background:\s*#24272d/);
-    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-reference-badge\][\s\S]*color:\s*#f0f2f5/);
-    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-open-items-panel\][\s\S]*background:\s*#24272d/);
-    assert.match(css, /:host\(\[data-theme="dark"\]\)[\s\S]*\[data-open-items-search\][\s\S]*background:\s*#1f2227/);
+    // P0-a: the dark palette is tokenized. Each selector that renders a
+    // protected color references a --pin-* token, and that token's dark value
+    // in the :host([data-theme="dark"]) scope equals the original hex
+    // byte-for-byte. These two-part checks are equivalent-or-stronger than the
+    // old hex-bound assertions: they pin both the var() wiring and the resolved
+    // value (spec §2.4 / manager ruling, dark focus #58a6ff aside).
+    // [data-reference-badge] background: #ffffff → var(--pin-bg-surface) → #24272d (dark)
+    assert.match(css, /\[data-reference-badge\][\s\S]*?background:\s*var\(--pin-bg-surface\)/);
+    assert.match(css, /:host\(\[data-theme="dark"\]\)\s*\{[\s\S]*?--pin-bg-surface:\s*#24272d/);
+    // [data-reference-badge] color: #1f2937 → var(--pin-text-primary) → #f0f2f5 (dark)
+    assert.match(css, /\[data-reference-badge\][\s\S]*?color:\s*var\(--pin-text-primary\)/);
+    assert.match(css, /:host\(\[data-theme="dark"\]\)\s*\{[\s\S]*?--pin-text-primary:\s*#f0f2f5/);
+    // [data-open-items-panel] background: #ffffff → var(--pin-bg-surface) → #24272d (dark, shared token)
+    assert.match(css, /\[data-open-items-panel\][\s\S]*?background:\s*var\(--pin-bg-surface\)/);
+    // [data-open-items-search] background: #ffffff → var(--pin-bg-field) → #1f2227 (dark)
+    assert.match(css, /\[data-open-items-search\][\s\S]*?background:\s*var\(--pin-bg-field\)/);
+    assert.match(css, /:host\(\[data-theme="dark"\]\)\s*\{[\s\S]*?--pin-bg-field:\s*#1f2227/);
 
     // The OS-preference media query remains as a degradation fallback.
     assert.match(css, /@media\s*\(prefers-color-scheme:\s*dark\)/);
@@ -3257,11 +3268,42 @@ test('light theme falls through to the bare :host default (no dark styles)', asy
   // layout shell applied by default; the first light-colored rule is
   // [data-reference-badge] right after it.
   assert.match(css, /:host,\s*\n\s*:host\(\[data-theme="light"\]\),\s*\n\s*:host\(:not\(\[data-theme\]\)\)\s*\{([\s\S]*?)\}\s*\n\s*\[data-reference-badge\]/);
-  assert.match(css, /\[data-reference-badge\][\s\S]*background:\s*#ffffff/);
-  // The base host block (the layout shell before any [data-*] rule) must not
-  // declare a dark background — dark is scoped to the data-theme selector only.
+  // P0-a: the light default is a token on the bare :host block. The badge
+  // background resolves #ffffff → var(--pin-bg-surface), and the literal hex
+  // lives only at the token definition — no literal #ffffff in the rule.
+  assert.match(css, /\[data-reference-badge\][\s\S]*?background:\s*var\(--pin-bg-surface\)/);
+  assert.match(css, /^\s*:host\s*\{[\s\S]*?--pin-bg-surface:\s*#ffffff/);
+  assert.ok(!/\[data-reference-badge\][\s\S]*?background:\s*#ffffff/.test(css), 'badge background must come from the --pin-bg-surface token, not a literal hex');
+  // The base host block (the token defaults + layout shell before any [data-*]
+  // rule) must not leak any dark-only value — dark is scoped to the
+  // :host([data-theme="dark"]) selector and the @media dark fallback only.
   const baseHost = css.split(/\n\s*\[data-reference-badge\]/, 1)[0];
-  assert.ok(!baseHost.includes('#24272d'), 'bare host block must stay light');
+  const darkOnly = ['#24272d', '#f0f2f5', '#1f2227', '#58a6ff', '#b7bdc8', '#8b949e', '#79c0ff', '#56d364', '#d2a8ff', '#9ac1ff', '#4d2d00', '#9e6a03', '#ffd18a', 'rgba(255,', 'rgba(117,'];
+  for (const needle of darkOnly) {
+    assert.ok(!baseHost.includes(needle), `bare host token block must stay light (no ${needle})`);
+  }
+});
+
+test('focus rings and the search box focus resolve from the shared --pin-focus-ring token', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/16');
+  await harness.flushMicrotasks();
+
+  const css = getBadge(harness.document).style.textContent;
+  // P0-a + spec §2.4: every panel :focus-visible rule switches to the token
+  // (light #0969da / dark #58a6ff), width stays 2px, ring stays inset -2px.
+  const tokenOutlines = css.match(/outline:\s*var\(--pin-focus-ring-width\)\s+solid\s+var\(--pin-focus-ring\)/g) || [];
+  assert.ok(tokenOutlines.length >= 6, `expected all :focus-visible rules to use the token, got ${tokenOutlines.length}`);
+  // The search input keeps the GitHub input convention, also via the token.
+  assert.match(css, /\[data-open-items-search\]:focus\s*\{[\s\S]*?border-color:\s*var\(--pin-focus-ring\)/);
+  assert.match(css, /\[data-open-items-search\]:focus\s*\{[\s\S]*?box-shadow:\s*0 0 0 1px var\(--pin-focus-ring\)/);
+  // Light default lives on the bare :host block; the dark override #58a6ff is
+  // scoped to :host([data-theme="dark"]) and mirrored by the @media fallback —
+  // never on the bare :host (original #24272d guard, now for the focus ring).
+  assert.match(css, /^\s*:host\s*\{[\s\S]*?--pin-focus-ring:\s*#0969da/);
+  assert.match(css, /:host\(\[data-theme="dark"\]\)\s*\{[\s\S]*?--pin-focus-ring:\s*#58a6ff/);
+  assert.match(css, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?--pin-focus-ring:\s*#58a6ff/);
+  const baseHost = css.split(/\n\s*\[data-reference-badge\]/, 1)[0];
+  assert.ok(!baseHost.includes('#58a6ff'), 'bare :host must keep the light #0969da focus ring');
 });
 
 test('panel is announced as a labelled dialog and result rows use a roving tabindex', async () => {
