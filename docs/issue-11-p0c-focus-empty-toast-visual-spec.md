@@ -53,9 +53,9 @@
 
 **暗色下当前焦点环不合格。** `#0969da` 在暗色面板底 `#24272d` 上实测 **2.883:1**，低于 WCAG 非文本 **3:1**；在搜索底 `#1f2227` = 3.073 仅勉强过。也就是说暗色用户用 ↑/↓ 或 Tab 浏览行时，焦点环几乎看不清。
 
-### 2.3 建议（修正）
+### 2.3 裁决（manager 已采纳，按此落地）
 
-- **暗色焦点环色改为 `#58a6ff`**：实测在 `#24272d` = 5.93:1、在 `#1f2227` = 6.32:1，均远超 3:1。`#79c0ff` 亦可（7.70 / 8.20），但 `#58a6ff` 是 GitHub 暗色标准 accent，与产品语境更贴合。**推荐 `#58a6ff`**。
+- **暗色焦点环色定为 `#58a6ff`**（manager 2026-09-07 裁决采纳）：实测在 `#24272d` = 5.93:1、在 `#1f2227` = 6.32:1，均远超 3:1。`#79c0ff` 亦可（7.70 / 8.20），但 `#58a6ff` 是 GitHub 暗色标准 accent，与产品语境更贴合；故**定 `#58a6ff`**。
 - **Light 不变**：`#0969da`（5.19:1，达标）。
 - 宽度统一 `2px`；偏移约定：**面板内控件内缩 `-2px`**（避免被面板边缘裁切）、**页面级控件外扩 `2px`**。
 
@@ -121,6 +121,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 **对比度小结**：主文案 15.80/13.75 ✅、辅助 6.39/7.93 ✅、插图（非文本 ≥3:1）6.39/4.87 ✅、动作文字 4.5:1 ✅。全部过 WCAG AA。
 
+> **落地 hook（manager 裁决补充）**：空状态主文案暗色取 `--pin-text-primary` = **`#f0f6fc`**（13.75:1），**不是** `#f0f2f5`。`#f0f2f5` 是 `badge-css.js` 内正文/控件标注一路沿用的值，但那是短字/控件语境；空状态是长文案信息区，按本规范令牌表取 `#f0f6fc`，避免 dev2 落地时在两值间择一犹豫。
+
 ---
 
 ## 4. Toast（复制成功，P1 视觉规格）
@@ -156,8 +158,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 |---|---|---|
 | 焦点环令牌 + 面板内 `:focus-visible` 规则 | `src/badge-css.js` | P0-a(dev) |
 | 焦点环色值同步 | `src/options.css:80` | P0-a(dev) / UI |
-| 空状态插图 + 动作按钮 **DOM** | `src/content.js` | P0-b(dev2) 或 UI 后续 |
-| toast **DOM** + 定时器 + reduced-motion 分支 | `src/content.js` | P0-b(dev2) 或 UI 后续 |
+| 空状态插图 + 动作按钮 **DOM** | `src/content.js` | **P0-b(dev2)（manager 已定）** |
+| toast **DOM** + 定时器 + reduced-motion 分支 | `src/content.js` | **P0-b(dev2)（manager 已定）** |
 | 新增 i18n（toast / 空状态辅助文案） | `src/i18n.js` + `_locales/` | 见上 |
 
 > P0-c 本身**不**改上述文件；本文档交付后由 manager 派工落地。
@@ -176,8 +178,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 | toast 文字 | `#ffffff` / `#24292f`/`#1f2227` | 14.65 / 15.95 | 4.5:1 PASS |
 | toast 勾选 | `#7ee787` / toast 面 | 9.54 / 10.38 | 3:1 PASS |
 
-**结论**：全表除「暗色焦点环现值」一项不达标（需按 2.3 修正）外，其余全部满足。修正 `#0969da`→`#58a6ff` 后，焦点环、空状态、toast 三项一套规范全部过 WCAG AA。
+**结论**：全表除「暗色焦点环现值」一项不达标外，其余全部满足。经 manager 裁决按 2.3 将 `#0969da`→`#58a6ff` 后，焦点环、空状态、toast 三项一套规范全部过 WCAG AA。
 
 ---
 
-> 待 @manager 评审：指定上述落地归属（尤其新建 toast 与空状态插图 DOM 归 dev2 还是 UI 后续线），并核 P0-a(dev) 令牌化是否能与本规范共享 `--pin-focus-ring`。
+> **评审状态（manager 2026-09-07 裁决）**：① 暗色焦点环 **采纳 `#58a6ff`** —— 定；② 空状态 + toast DOM **归 P0-b(dev2) 落地** —— 定（UI 只出规格、不发码）；③ 共享 `--pin-focus-ring` 令牌 —— **成立**，交 P0-a(dev) 落地（dark `#58a6ff` / light `#0969da`）。P0-c 交付 **PASS，可合入**。
