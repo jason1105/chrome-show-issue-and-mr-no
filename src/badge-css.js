@@ -8,6 +8,56 @@
   root.GitLabReferenceBadgeCss = api;
 })(typeof globalThis === 'object' ? globalThis : this, function createBadgeCss(root) {
   const BADGE_CSS = `
+      :host {
+        /* P0-a color tokens (#11): every color in the badge resolves through a
+           --pin-* token. Light values live on this bare :host block (applies to
+           every host); the dark palette is scoped to :host([data-theme="dark"])
+           below and mirrored by the @media (prefers-color-scheme: dark)
+           fallback. Values are byte-identical to the pre-tokenization hex/rgba. */
+        --pin-focus-ring: #0969da;
+        --pin-focus-ring-width: 2px;
+        --pin-bg-surface: #ffffff;
+        --pin-bg-field: #ffffff;
+        --pin-bg-hover: rgba(31, 41, 55, 0.08);
+        --pin-bg-hover-soft: rgba(31, 41, 55, 0.06);
+        --pin-bg-pill: rgba(31, 41, 55, 0.1);
+        --pin-bg-selected: #ddf4ff;
+        --pin-bg-current: #ddf4ff;
+        --pin-bg-marker: rgba(9, 105, 218, 0.12);
+        --pin-bg-tooltip: #24292f;
+        --pin-bg-warning: #fff8c5;
+        --pin-text-primary: #1f2937;
+        --pin-text-input: #24292f;
+        --pin-text-hover: #24292f;
+        --pin-text-hover-strong: #24292f;
+        --pin-text-muted: #6e7781;
+        --pin-text-icon: #6e7781;
+        --pin-text-secondary: #57606a;
+        --pin-text-disabled: #6e7781;
+        --pin-text-selected: #0550ae;
+        --pin-text-marker: #0550ae;
+        --pin-text-success: #0f6d2e;
+        --pin-text-issue: #137333;
+        --pin-text-mr: #7d4e9e;
+        --pin-text-mr-link: #0b5cad;
+        --pin-text-warning: #633c01;
+        --pin-text-tooltip: #ffffff;
+        --pin-border-badge: rgba(31, 41, 55, 0.28);
+        --pin-border-field: rgba(31, 41, 55, 0.28);
+        --pin-border-panel: rgba(31, 41, 55, 0.24);
+        --pin-border-filters: rgba(31, 41, 55, 0.24);
+        --pin-border-edge: rgba(31, 41, 55, 0.2);
+        --pin-border-filter-inner: rgba(31, 41, 55, 0.18);
+        --pin-border-header: rgba(31, 41, 55, 0.14);
+        --pin-border-divider: rgba(31, 41, 55, 0.12);
+        --pin-border-current: #0969da;
+        --pin-border-warning: #d4a72c;
+        --pin-border-mr: rgba(31, 111, 235, 0.42);
+        --pin-shadow-badge: rgba(17, 24, 39, 0.2);
+        --pin-shadow-panel: rgba(17, 24, 39, 0.22);
+        --pin-shadow-tooltip: rgba(17, 24, 39, 0.25);
+      }
+
       :host,
       :host([data-theme="light"]),
       :host(:not([data-theme])) {
@@ -29,11 +79,11 @@
         align-items: stretch;
         max-width: 100%;
         overflow: visible;
-        border: 1px solid rgba(31, 41, 55, 0.28);
+        border: 1px solid var(--pin-border-badge);
         border-radius: 6px;
-        background: #ffffff;
-        box-shadow: 0 2px 8px rgba(17, 24, 39, 0.2);
-        color: #1f2937;
+        background: var(--pin-bg-surface);
+        box-shadow: 0 2px 8px var(--pin-shadow-badge);
+        color: var(--pin-text-primary);
         font: 600 13px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: 0;
         white-space: nowrap;
@@ -51,10 +101,10 @@
         margin: 0;
         padding: 0;
         border: 0;
-        border-right: 1px solid rgba(31, 41, 55, 0.2);
+        border-right: 1px solid var(--pin-border-edge);
         border-radius: 5px 0 0 5px;
         background: transparent;
-        color: #6e7781;
+        color: var(--pin-text-icon);
         cursor: grab;
         pointer-events: auto;
         touch-action: none;
@@ -66,12 +116,12 @@
       }
 
       [data-drag-handle]:hover {
-        background: rgba(31, 41, 55, 0.08);
-        color: #24292f;
+        background: var(--pin-bg-hover);
+        color: var(--pin-text-hover);
       }
 
       [data-drag-handle]:focus-visible {
-        outline: 2px solid #0969da;
+        outline: var(--pin-focus-ring-width) solid var(--pin-focus-ring);
         outline-offset: -2px;
       }
 
@@ -94,9 +144,9 @@
         max-width: min(220px, calc(100vw - 16px));
         padding: 5px 8px;
         border-radius: 6px;
-        background: #24292f;
-        box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
-        color: #ffffff;
+        background: var(--pin-bg-tooltip);
+        box-shadow: 0 2px 8px var(--pin-shadow-tooltip);
+        color: var(--pin-text-tooltip);
         font: 500 12px/16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         white-space: nowrap;
         opacity: 0;
@@ -132,11 +182,11 @@
       }
 
       [data-reference-trigger]:hover {
-        background: rgba(31, 41, 55, 0.08);
+        background: var(--pin-bg-hover);
       }
 
       [data-reference-trigger]:focus-visible {
-        outline: 2px solid #0969da;
+        outline: var(--pin-focus-ring-width) solid var(--pin-focus-ring);
         outline-offset: -2px;
       }
 
@@ -157,11 +207,11 @@
         width: min(380px, calc(100vw - 16px));
         max-height: var(--panel-max-height);
         overflow: auto;
-        border: 1px solid rgba(31, 41, 55, 0.24);
+        border: 1px solid var(--pin-border-panel);
         border-radius: 7px;
-        background: #ffffff;
-        box-shadow: 0 8px 24px rgba(17, 24, 39, 0.22);
-        color: #1f2937;
+        background: var(--pin-bg-surface);
+        box-shadow: 0 8px 24px var(--pin-shadow-panel);
+        color: var(--pin-text-primary);
         font: 400 13px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         white-space: normal;
         pointer-events: auto;
@@ -201,7 +251,7 @@
         justify-content: space-between;
         min-height: 42px;
         padding: 7px 8px 7px 12px;
-        border-bottom: 1px solid rgba(31, 41, 55, 0.14);
+        border-bottom: 1px solid var(--pin-border-header);
         background: inherit;
       }
 
@@ -219,7 +269,7 @@
 
       [data-last-refresh] {
         flex-basis: 100%;
-        color: #6e7781;
+        color: var(--pin-text-muted);
         font-size: 11px;
         font-weight: 400;
         line-height: 14px;
@@ -234,7 +284,7 @@
         height: 18px;
         padding: 0 5px;
         border-radius: 9px;
-        background: rgba(31, 41, 55, 0.1);
+        background: var(--pin-bg-pill);
         font-size: 11px;
         line-height: 18px;
       }
@@ -250,7 +300,7 @@
         border: 0;
         border-radius: 5px;
         background: transparent;
-        color: #57606a;
+        color: var(--pin-text-secondary);
         font: 500 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         cursor: pointer;
         pointer-events: auto;
@@ -258,14 +308,14 @@
       }
 
       [data-refresh-open-items]:hover {
-        background: rgba(31, 41, 55, 0.08);
-        color: #24292f;
+        background: var(--pin-bg-hover);
+        color: var(--pin-text-hover-strong);
       }
 
       [data-refresh-open-items]:focus-visible,
       [data-open-item]:focus-visible,
       [data-open-items-load-more]:focus-visible {
-        outline: 2px solid #0969da;
+        outline: var(--pin-focus-ring-width) solid var(--pin-focus-ring);
         outline-offset: -2px;
       }
 
@@ -283,7 +333,7 @@
         align-items: stretch;
         gap: 7px;
         padding: 8px 10px;
-        border-bottom: 1px solid rgba(31, 41, 55, 0.12);
+        border-bottom: 1px solid var(--pin-border-divider);
         background: inherit;
       }
 
@@ -294,22 +344,22 @@
         height: 30px;
         margin: 0;
         padding: 5px 9px;
-        border: 1px solid rgba(31, 41, 55, 0.28);
+        border: 1px solid var(--pin-border-field);
         border-radius: 6px;
-        background: #ffffff;
-        color: #24292f;
+        background: var(--pin-bg-field);
+        color: var(--pin-text-input);
         font: 400 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         appearance: auto;
       }
 
       [data-open-items-search]::placeholder {
-        color: #6e7781;
+        color: var(--pin-text-icon);
         opacity: 1;
       }
 
       [data-open-items-search]:focus {
-        border-color: #0969da;
-        box-shadow: 0 0 0 1px #0969da;
+        border-color: var(--pin-focus-ring);
+        box-shadow: 0 0 0 1px var(--pin-focus-ring);
         outline: none;
       }
 
@@ -318,7 +368,7 @@
         display: inline-flex;
         flex: 0 0 auto;
         overflow: hidden;
-        border: 1px solid rgba(31, 41, 55, 0.24);
+        border: 1px solid var(--pin-border-filters);
         border-radius: 6px;
       }
 
@@ -328,10 +378,10 @@
         margin: 0;
         padding: 4px 8px;
         border: 0;
-        border-left: 1px solid rgba(31, 41, 55, 0.18);
+        border-left: 1px solid var(--pin-border-filter-inner);
         border-radius: 0;
-        background: #ffffff;
-        color: #57606a;
+        background: var(--pin-bg-surface);
+        color: var(--pin-text-secondary);
         font: 500 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         cursor: pointer;
         appearance: none;
@@ -342,19 +392,19 @@
       }
 
       [data-open-items-filter]:hover {
-        background: rgba(31, 41, 55, 0.06);
-        color: #24292f;
+        background: var(--pin-bg-hover-soft);
+        color: var(--pin-text-hover-strong);
       }
 
       [data-open-items-filter][aria-pressed="true"] {
-        background: #ddf4ff;
-        color: #0550ae;
+        background: var(--pin-bg-selected);
+        color: var(--pin-text-selected);
       }
 
       [data-open-items-filter]:focus-visible {
         position: relative;
         z-index: 1;
-        outline: 2px solid #0969da;
+        outline: var(--pin-focus-ring-width) solid var(--pin-focus-ring);
         outline-offset: -2px;
       }
 
@@ -365,12 +415,12 @@
         justify-content: space-between;
         gap: 7px;
         padding: 6px 10px;
-        border-bottom: 1px solid rgba(31, 41, 55, 0.12);
+        border-bottom: 1px solid var(--pin-border-divider);
         background: inherit;
       }
 
       [data-item-state-label] {
-        color: #57606a;
+        color: var(--pin-text-secondary);
         font-size: 12px;
       }
 
@@ -392,29 +442,29 @@
         border: 0;
         border-radius: 5px;
         background: transparent;
-        color: #57606a;
+        color: var(--pin-text-secondary);
         cursor: pointer;
         pointer-events: auto;
         appearance: none;
       }
 
       [data-open-options]:hover {
-        background: rgba(31, 41, 55, 0.08);
-        color: #24292f;
+        background: var(--pin-bg-hover);
+        color: var(--pin-text-hover-strong);
       }
 
       [data-open-options]:focus-visible {
-        outline: 2px solid #0969da;
+        outline: var(--pin-focus-ring-width) solid var(--pin-focus-ring);
         outline-offset: -2px;
       }
 
       [data-open-items-message] {
         margin: 8px 10px 2px;
         padding: 7px 9px;
-        border: 1px solid #d4a72c;
+        border: 1px solid var(--pin-border-warning);
         border-radius: 5px;
-        background: #fff8c5;
-        color: #633c01;
+        background: var(--pin-bg-warning);
+        color: var(--pin-text-warning);
         font-size: 12px;
       }
 
@@ -424,24 +474,24 @@
       }
 
       [data-open-items-group] + [data-open-items-group] {
-        border-top: 1px solid rgba(31, 41, 55, 0.12);
+        border-top: 1px solid var(--pin-border-divider);
       }
 
       [data-open-items-group-heading] {
         padding: 3px 12px 6px;
-        color: #57606a;
+        color: var(--pin-text-secondary);
         font-size: 12px;
       }
 
       [data-open-items-status] {
         padding: 9px 12px 10px;
-        color: #6e7781;
+        color: var(--pin-text-muted);
         font-size: 12px;
       }
 
       [data-open-items-empty] {
         padding: 28px 16px 30px;
-        color: #6e7781;
+        color: var(--pin-text-muted);
         font-size: 12px;
         text-align: center;
       }
@@ -462,20 +512,20 @@
       }
 
       a[data-open-item]:hover {
-        background: rgba(31, 41, 55, 0.06);
+        background: var(--pin-bg-hover-soft);
       }
 
       [data-open-item-iid] {
         font-weight: 600;
-        color: #137333;
+        color: var(--pin-text-issue);
       }
 
       [data-open-item][data-kind="merge-request"] [data-open-item-iid] {
-        color: #7d4e9e;
+        color: var(--pin-text-mr);
       }
 
       [data-open-item][data-item-state] [data-open-item-title] {
-        color: #6e7781;
+        color: var(--pin-text-disabled);
         text-decoration: line-through;
       }
 
@@ -491,16 +541,16 @@
       }
 
       [data-current-open-item] {
-        border-left-color: #0969da;
-        background: #ddf4ff;
-        color: #24292f;
+        border-left-color: var(--pin-border-current);
+        background: var(--pin-bg-current);
+        color: var(--pin-text-hover-strong);
       }
 
       [data-current-marker] {
         padding: 1px 6px;
         border-radius: 9px;
-        background: rgba(9, 105, 218, 0.12);
-        color: #0550ae;
+        background: var(--pin-bg-marker);
+        color: var(--pin-text-marker);
         font-size: 11px;
         line-height: 16px;
       }
@@ -517,7 +567,7 @@
         margin: 0;
         padding: 0;
         border: 0;
-        border-left: 1px solid rgba(31, 41, 55, 0.2);
+        border-left: 1px solid var(--pin-border-edge);
         border-radius: 0 5px 5px 0;
         background: transparent;
         color: currentColor;
@@ -528,17 +578,17 @@
       }
 
       [data-copy-reference]:hover {
-        background: rgba(31, 41, 55, 0.08);
+        background: var(--pin-bg-hover);
       }
 
       [data-copy-reference]:focus-visible {
-        outline: 2px solid #0969da;
+        outline: var(--pin-focus-ring-width) solid var(--pin-focus-ring);
         outline-offset: -2px;
       }
 
       [data-copy-reference][data-copy-state="success"],
       [data-copy-reference][data-copy-state="success"]:hover {
-        color: #0f6d2e;
+        color: var(--pin-text-success);
       }
 
       [data-copy-icon] {
@@ -556,9 +606,9 @@
         max-width: min(220px, calc(100vw - 24px));
         padding: 5px 8px;
         border-radius: 6px;
-        background: #24292f;
-        box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
-        color: #ffffff;
+        background: var(--pin-bg-tooltip);
+        box-shadow: 0 2px 8px var(--pin-shadow-tooltip);
+        color: var(--pin-text-tooltip);
         font: 500 12px/16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         white-space: nowrap;
         opacity: 0;
@@ -589,131 +639,50 @@
       }
 
       [data-kind="merge-request"] {
-        border-color: rgba(31, 111, 235, 0.42);
-        color: #0b5cad;
+        border-color: var(--pin-border-mr);
+        color: var(--pin-text-mr-link);
       }
 
+      /* Dark fallback for OS preference: when the OS reports dark but the host
+         attribute is absent, flip the token values to the dark palette on the
+         bare :host. This mirrors the old per-element dark overrides exactly
+         (later in source than the light :host defaults, so it wins when the
+         media query matches). */
       @media (prefers-color-scheme: dark) {
-        [data-reference-badge] {
-          border-color: rgba(255, 255, 255, 0.25);
-          background: #24272d;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-          color: #f0f2f5;
-        }
-
-        [data-copy-reference] {
-          border-left-color: rgba(255, 255, 255, 0.2);
-        }
-
-        [data-drag-handle] {
-          border-right-color: rgba(255, 255, 255, 0.2);
-          color: #8b949e;
-        }
-
-        [data-reference-trigger]:hover,
-        [data-copy-reference]:hover,
-        [data-drag-handle]:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #f0f2f5;
-        }
-
-        [data-open-items-panel] {
-          border-color: rgba(255, 255, 255, 0.2);
-          background: #24272d;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-          color: #f0f2f5;
-        }
-
-        [data-open-items-header],
-        [data-open-items-controls],
-        [data-item-state-controls],
-        [data-open-items-group] + [data-open-items-group] {
-          border-color: rgba(255, 255, 255, 0.14);
-        }
-
-        [data-open-items-total],
-        [data-open-items-group-count] {
-          background: rgba(255, 255, 255, 0.12);
-        }
-
-        [data-refresh-open-items],
-        [data-open-items-group-heading],
-        [data-open-items-status],
-        [data-open-items-empty],
-        [data-last-refresh] {
-          color: #b7bdc8;
-        }
-
-        [data-open-items-search] {
-          border-color: rgba(255, 255, 255, 0.26);
-          background: #1f2227;
-          color: #f0f2f5;
-        }
-
-        [data-open-items-search]::placeholder {
-          color: #8b949e;
-        }
-
-        [data-open-items-filters] {
-          border-color: rgba(255, 255, 255, 0.24);
-        }
-
-        [data-open-items-filter] {
-          border-left-color: rgba(255, 255, 255, 0.16);
-          background: #24272d;
-          color: #b7bdc8;
-        }
-
-        [data-open-items-filter]:hover {
-          background: rgba(255, 255, 255, 0.08);
-          color: #ffffff;
-        }
-
-        [data-open-items-filter][aria-pressed="true"] {
-          background: rgba(9, 105, 218, 0.28);
-          color: #79c0ff;
-        }
-
-        [data-refresh-open-items]:hover,
-        [data-open-options]:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #ffffff;
-        }
-
-        [data-item-state-label] {
-          color: #b7bdc8;
-        }
-
-        [data-open-options] {
-          color: #b7bdc8;
-        }
-
-        [data-open-items-message] {
-          border-color: #9e6a03;
-          background: #4d2d00;
-          color: #ffd18a;
-        }
-
-        a[data-open-item]:hover {
-          background: rgba(255, 255, 255, 0.08);
-        }
-
-        [data-open-item-iid] {
-          color: #56d364;
-        }
-
-        [data-open-item][data-kind="merge-request"] [data-open-item-iid] {
-          color: #d2a8ff;
-        }
-
-        [data-current-open-item] {
-          background: rgba(9, 105, 218, 0.24);
-          color: #ffffff;
-        }
-
-        [data-kind="merge-request"] {
-          border-color: rgba(117, 170, 255, 0.55);
-          color: #9ac1ff;
+        :host {
+          --pin-focus-ring: #58a6ff;
+          --pin-bg-surface: #24272d;
+          --pin-bg-field: #1f2227;
+          --pin-bg-hover: rgba(255, 255, 255, 0.1);
+          --pin-bg-hover-soft: rgba(255, 255, 255, 0.08);
+          --pin-bg-pill: rgba(255, 255, 255, 0.12);
+          --pin-bg-selected: rgba(9, 105, 218, 0.28);
+          --pin-bg-current: rgba(9, 105, 218, 0.24);
+          --pin-bg-warning: #4d2d00;
+          --pin-text-primary: #f0f2f5;
+          --pin-text-input: #f0f2f5;
+          --pin-text-hover: #f0f2f5;
+          --pin-text-hover-strong: #ffffff;
+          --pin-text-muted: #b7bdc8;
+          --pin-text-icon: #8b949e;
+          --pin-text-secondary: #b7bdc8;
+          --pin-text-selected: #79c0ff;
+          --pin-text-issue: #56d364;
+          --pin-text-mr: #d2a8ff;
+          --pin-text-mr-link: #9ac1ff;
+          --pin-text-warning: #ffd18a;
+          --pin-border-badge: rgba(255, 255, 255, 0.25);
+          --pin-border-field: rgba(255, 255, 255, 0.26);
+          --pin-border-panel: rgba(255, 255, 255, 0.2);
+          --pin-border-filters: rgba(255, 255, 255, 0.24);
+          --pin-border-edge: rgba(255, 255, 255, 0.2);
+          --pin-border-filter-inner: rgba(255, 255, 255, 0.16);
+          --pin-border-header: rgba(255, 255, 255, 0.14);
+          --pin-border-divider: rgba(255, 255, 255, 0.14);
+          --pin-border-warning: #9e6a03;
+          --pin-border-mr: rgba(117, 170, 255, 0.55);
+          --pin-shadow-badge: rgba(0, 0, 0, 0.45);
+          --pin-shadow-panel: rgba(0, 0, 0, 0.5);
         }
       }
 
@@ -722,130 +691,44 @@
          script drives the host attribute; dark is consumed here, while light
          and the no-attribute fallback are handled by the merged base :host
          selector above (:host, :host([data-theme="light"]),
-         :host(:not([data-theme]))). The bare :host layout block applies to all
-         three, keeping the light theme as the default with no dark flash. */
+         :host(:not([data-theme]))). Dark is expressed as token overrides so
+         the light rules resolve to the dark palette without per-element dark
+         rules. This block has higher specificity than the :host defaults, so
+         it wins for data-theme="dark" hosts in every OS scheme. */
       :host([data-theme="dark"]) {
-        [data-reference-badge] {
-          border-color: rgba(255, 255, 255, 0.25);
-          background: #24272d;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-          color: #f0f2f5;
-        }
-
-        [data-copy-reference] {
-          border-left-color: rgba(255, 255, 255, 0.2);
-        }
-
-        [data-drag-handle] {
-          border-right-color: rgba(255, 255, 255, 0.2);
-          color: #8b949e;
-        }
-
-        [data-reference-trigger]:hover,
-        [data-copy-reference]:hover,
-        [data-drag-handle]:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #f0f2f5;
-        }
-
-        [data-open-items-panel] {
-          border-color: rgba(255, 255, 255, 0.2);
-          background: #24272d;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-          color: #f0f2f5;
-        }
-
-        [data-open-items-header],
-        [data-open-items-controls],
-        [data-item-state-controls],
-        [data-open-items-group] + [data-open-items-group] {
-          border-color: rgba(255, 255, 255, 0.14);
-        }
-
-        [data-open-items-total],
-        [data-open-items-group-count] {
-          background: rgba(255, 255, 255, 0.12);
-        }
-
-        [data-refresh-open-items],
-        [data-open-items-group-heading],
-        [data-open-items-status],
-        [data-open-items-empty],
-        [data-last-refresh] {
-          color: #b7bdc8;
-        }
-
-        [data-open-items-search] {
-          border-color: rgba(255, 255, 255, 0.26);
-          background: #1f2227;
-          color: #f0f2f5;
-        }
-
-        [data-open-items-search]::placeholder {
-          color: #8b949e;
-        }
-
-        [data-open-items-filters] {
-          border-color: rgba(255, 255, 255, 0.24);
-        }
-
-        [data-open-items-filter] {
-          border-left-color: rgba(255, 255, 255, 0.16);
-          background: #24272d;
-          color: #b7bdc8;
-        }
-
-        [data-open-items-filter]:hover {
-          background: rgba(255, 255, 255, 0.08);
-          color: #ffffff;
-        }
-
-        [data-open-items-filter][aria-pressed="true"] {
-          background: rgba(9, 105, 218, 0.28);
-          color: #79c0ff;
-        }
-
-        [data-refresh-open-items]:hover,
-        [data-open-options]:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: #ffffff;
-        }
-
-        [data-item-state-label] {
-          color: #b7bdc8;
-        }
-
-        [data-open-options] {
-          color: #b7bdc8;
-        }
-
-        [data-open-items-message] {
-          border-color: #9e6a03;
-          background: #4d2d00;
-          color: #ffd18a;
-        }
-
-        a[data-open-item]:hover {
-          background: rgba(255, 255, 255, 0.08);
-        }
-
-        [data-open-item-iid] {
-          color: #56d364;
-        }
-
-        [data-open-item][data-kind="merge-request"] [data-open-item-iid] {
-          color: #d2a8ff;
-        }
-
-        [data-current-open-item] {
-          background: rgba(9, 105, 218, 0.24);
-          color: #ffffff;
-        }
-
-        [data-kind="merge-request"] {
-          border-color: rgba(117, 170, 255, 0.55);
-          color: #9ac1ff;
-        }
+        --pin-focus-ring: #58a6ff;
+        --pin-bg-surface: #24272d;
+        --pin-bg-field: #1f2227;
+        --pin-bg-hover: rgba(255, 255, 255, 0.1);
+        --pin-bg-hover-soft: rgba(255, 255, 255, 0.08);
+        --pin-bg-pill: rgba(255, 255, 255, 0.12);
+        --pin-bg-selected: rgba(9, 105, 218, 0.28);
+        --pin-bg-current: rgba(9, 105, 218, 0.24);
+        --pin-bg-warning: #4d2d00;
+        --pin-text-primary: #f0f2f5;
+        --pin-text-input: #f0f2f5;
+        --pin-text-hover: #f0f2f5;
+        --pin-text-hover-strong: #ffffff;
+        --pin-text-muted: #b7bdc8;
+        --pin-text-icon: #8b949e;
+        --pin-text-secondary: #b7bdc8;
+        --pin-text-selected: #79c0ff;
+        --pin-text-issue: #56d364;
+        --pin-text-mr: #d2a8ff;
+        --pin-text-mr-link: #9ac1ff;
+        --pin-text-warning: #ffd18a;
+        --pin-border-badge: rgba(255, 255, 255, 0.25);
+        --pin-border-field: rgba(255, 255, 255, 0.26);
+        --pin-border-panel: rgba(255, 255, 255, 0.2);
+        --pin-border-filters: rgba(255, 255, 255, 0.24);
+        --pin-border-edge: rgba(255, 255, 255, 0.2);
+        --pin-border-filter-inner: rgba(255, 255, 255, 0.16);
+        --pin-border-header: rgba(255, 255, 255, 0.14);
+        --pin-border-divider: rgba(255, 255, 255, 0.14);
+        --pin-border-warning: #9e6a03;
+        --pin-border-mr: rgba(117, 170, 255, 0.55);
+        --pin-shadow-badge: rgba(0, 0, 0, 0.45);
+        --pin-shadow-panel: rgba(0, 0, 0, 0.5);
       }
 
       @media (max-width: 420px) {
