@@ -2391,6 +2391,72 @@ test('supports keyboard opening and Escape closes with focus restored', async ()
   assert.equal(rendered.panel.hidden, false);
 });
 
+// #11 P0-b focus loop — 初始焦点入面板: opening the panel via the keyboard
+// must move focus into the search box, so the next Tab cycles inside the
+// panel (focus trap) instead of escaping into the page.
+test('moves focus into the search box when opened with the Enter key', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'keydown', key: 'Enter' });
+  await harness.flushMicrotasks();
+
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'true');
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.search);
+});
+
+test('moves focus into the search box when the trigger is focused with Tab', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'focus' });
+  await harness.flushMicrotasks();
+
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.search);
+});
+
+// Hover-to-open must NOT steal focus into the panel, otherwise the panel can
+// never close on mouseleave (scheduleNavigationClose bails when focus is
+// inside the shadow root) and the mouse user loses their page context.
+test('does not steal focus into the panel when opened by hover', () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1');
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(150);
+
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.host.shadowRoot.activeElement, null);
+});
+
+// #11 P0-b aria sync — the trigger exposes which region the panel controls
+// and reflects the open state the whole time the panel is visible.
+test('keeps aria-expanded and aria-controls in sync with the panel state', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
+    fetchResults: [jsonResponse([]), jsonResponse([])],
+  });
+  const rendered = getBadge(harness.document);
+
+  assert.equal(rendered.panel.id, 'gitlab-open-items-panel');
+  assert.equal(rendered.trigger.getAttribute('aria-controls'), rendered.panel.id);
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'false');
+
+  rendered.trigger.dispatchEvent({ type: 'keydown', key: 'Enter' });
+  await harness.flushMicrotasks();
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'true');
+
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'Escape' });
+  assert.equal(rendered.panel.hidden, true);
+  assert.equal(rendered.trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(harness.document.activeElement, rendered.trigger);
+});
+
 test('does not close the navigation panel for Escape during IME composition', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/1', {
     fetchResults: [jsonResponse([]), jsonResponse([])],

@@ -1528,13 +1528,21 @@
     if (kind === 'issue' || kind === 'merge-request') loadMoreOpenItems(kind);
   }
 
-  function openNavigation() {
+  // #11 P0-b: keyboard activation (focus/Enter/Space/click) moves focus into
+  // the search box so the next Tab cycles inside the panel's focus trap.
+  // Hover and touch open must not steal focus — hover relies on the focus
+  // check in scheduleNavigationClose to close on mouseleave, and on touch a
+  // focused input would pop the on-screen keyboard.
+  function openNavigation({ focusIntoPanel = false } = {}) {
     clearNavigationTimers();
     if (destroyed || !navigation.reference) return;
     navigation.open = true;
     const host = root.document.getElementById(HOST_ID);
     if (!host) return;
     renderNavigationPanel(host);
+    if (focusIntoPanel) {
+      host.shadowRoot?.querySelector('[data-open-items-search]')?.focus();
+    }
     loadOpenItems();
   }
 
@@ -1590,7 +1598,7 @@
       navigation.open ? closeNavigation() : openNavigation();
       return;
     }
-    if (!navigation.open) openNavigation();
+    if (!navigation.open) openNavigation({ focusIntoPanel: true });
   }
 
   function handleNavigationFocusOut(event) {
@@ -1614,7 +1622,7 @@
       suppressNextFocusOpen = false;
       return;
     }
-    openNavigation();
+    openNavigation({ focusIntoPanel: true });
   }
 
   function handleNavigationKeydown(event) {
@@ -1626,7 +1634,7 @@
     }
     if ((event.key === 'Enter' || event.key === ' ') && !navigation.open) {
       event.preventDefault();
-      openNavigation();
+      openNavigation({ focusIntoPanel: true });
     }
   }
 
