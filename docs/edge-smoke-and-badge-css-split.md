@@ -120,7 +120,7 @@ CHROME_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
 - `scripts/package-smoke.mjs`：`main()` 内 `alwaysMatch` 的 `'goog:chromeOptions'` 能力键（`:83`）及其 `debuggerAddress` 读取（`:88`）
 - `scripts/acceptance-issue20.mjs`：`newSession()` 内 `alwaysMatch` 的 `'goog:chromeOptions'` 能力键（`:67`）及其 `debuggerAddress` 读取（`:77`）
 
-> 注：`scripts/package-smoke.mjs` / `scripts/acceptance-issue20.mjs` 为本地冒烟脚本，当前未纳入 `origin/main` 版本库（脚本入库跟进见 issue #31）。上列函数名/能力键名定位仍可唯一锚定到本地对应实现，待脚本入库后行号以入库版本为准。
+> 注：`scripts/package-smoke.mjs` / `scripts/acceptance-issue20.mjs` 为冒烟脚本，已随 issue #29 入库至版本库。上列函数名/能力键名定位（`main()` / `newSession()` / `goog:chromeOptions`）仍可唯一锚定到对应实现。
 
 > 注：`tests/browser.test.js` 的 `findExecutable` 已支持 `CHROME_PATH` / `CHROMEDRIVER_PATH` 环境变量覆盖，但光靠环境变量不够——能力键硬编码是真正的拦路点。
 
