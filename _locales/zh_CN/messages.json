@@ -303,6 +303,22 @@
     "message": "没有匹配的 items",
     "description": "全部条目的空结果状态。"
   },
+  "emptyHintSearch": {
+    "message": "换一个编号或关键词试试。",
+    "description": "搜索词过滤掉全部条目时，空状态下的辅助文案。"
+  },
+  "emptyHintNoOpen": {
+    "message": "该项目暂无可显示的条目。",
+    "description": "项目本身无任何条目时，空状态下的辅助文案。"
+  },
+  "emptyClearSearch": {
+    "message": "清空搜索",
+    "description": "空状态中的动作按钮：清空面板搜索词。"
+  },
+  "emptyShowAllTypes": {
+    "message": "显示全部类型",
+    "description": "空状态中的动作按钮：将类型筛选恢复为全部条目。"
+  },
   "panelHeading": {
     "message": "Open items",
     "description": "面板标题。"

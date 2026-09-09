@@ -535,6 +535,12 @@ function createHarness(initialUrl, options = {}) {
     clearTimeout(id) {
       timers.delete(id);
     },
+    matchMedia(query) {
+      return {
+        matches: options.reducedMotion === true,
+        media: query,
+      };
+    },
     AbortController,
   };
 
@@ -614,6 +620,8 @@ function getBadge(document) {
     handleTooltip: shadow?.querySelector('[data-drag-tooltip]') || null,
     button: shadow?.querySelector('[data-copy-reference]') || null,
     tooltip: shadow?.querySelector('[data-copy-tooltip]') || null,
+    toast: shadow?.querySelector('[data-copy-toast]') || null,
+    toastLabel: shadow?.querySelector('[data-copy-toast-label]') || null,
     icon: shadow?.querySelector('[data-copy-icon]') || null,
     announcement: shadow?.querySelector('[data-copy-announcement]') || null,
     panel: shadow?.querySelector('[data-open-items-panel]') || null,
@@ -1055,6 +1063,96 @@ test('contains fallback exceptions and removes the temporary field', async () =>
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'error');
   assert.equal(rendered.tooltip.textContent, 'Copy failed');
   assert.equal(rendered.announcement.textContent, 'Copy failed');
+});
+
+// ---- #11 P1 copy-success toast (spec §4): a separate surface sharing the copy
+// button anchor with the tooltip, mutually exclusive while visible. Dwells
+// 1800ms, fades 150ms, replaces in place; SR hears the announcement only.
+
+test('#11 P1 copy-success toast shows in place, dwells 1800ms, then fades over 150ms', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15');
+  const rendered = getBadge(harness.document);
+
+  rendered.button.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+
+  assert.deepEqual(harness.clipboardWrites, ['#15']);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'on');
+  assert.equal(rendered.toast.getAttribute('aria-hidden'), 'true');
+  assert.equal(rendered.toastLabel.textContent, 'Copied');
+  const toastIcon = rendered.toast.querySelector('[data-copy-toast-icon]');
+  assert.ok(toastIcon);
+  assert.equal(toastIcon.getAttribute('width'), '16');
+  assert.equal(toastIcon.getAttribute('aria-hidden'), 'true');
+
+  // 1499ms: still dwelling.
+  harness.advanceTimersBy(1499);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'on');
+
+  // 1800ms total: dwell ends, fade-out starts.
+  harness.advanceTimersBy(301);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'leaving');
+
+  // 1950ms total: fade done, attribute dropped (no stacking on repeat copies).
+  harness.advanceTimersBy(150);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), null);
+});
+
+test('#11 P1 a repeated copy replaces the toast in place and resets the dwell', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15');
+  const rendered = getBadge(harness.document);
+
+  rendered.button.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'on');
+
+  // Second copy at t=1000 clears the first dwell timer and starts a fresh one.
+  harness.advanceTimersBy(1000);
+  rendered.button.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'on');
+
+  // t=2700: the ORIGINAL timer (due at 1800) must have been cancelled, so the
+  // toast is still fully on — a stale fade would have put it in 'leaving'.
+  harness.advanceTimersBy(1700);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'on');
+
+  // t=2800: second dwell ends.
+  harness.advanceTimersBy(100);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'leaving');
+  harness.advanceTimersBy(150);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), null);
+});
+
+test('#11 P1 a failed copy never shows the success toast', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/10', {
+    clipboardResults: [new Error('blocked')],
+    execCommandResult: false,
+  });
+  const rendered = getBadge(harness.document);
+
+  rendered.button.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+
+  assert.equal(rendered.button.getAttribute('data-copy-state'), 'error');
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), null);
+  assert.equal(rendered.toastLabel.textContent, '');
+});
+
+test('#11 P1 reduced motion hides the toast instantly with no fade phase', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    reducedMotion: true,
+  });
+  const rendered = getBadge(harness.document);
+
+  rendered.button.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), 'on');
+
+  // Dwell ends at 1800ms; hideCopyToast drops the attribute directly under
+  // prefers-reduced-motion (no 'leaving' intermediate, no 150ms fade).
+  harness.advanceTimersBy(1800);
+  assert.equal(rendered.button.getAttribute('data-copy-toast'), null);
 });
 
 test('updates the reference and clears feedback after SPA navigation', async () => {
@@ -1768,7 +1866,20 @@ test('shows one clear empty state when loaded items do not match', async () => {
   const rendered = searchOpenItems(harness, 'missing');
   const empty = rendered.panel.querySelector('[data-open-items-empty]');
   assert.equal(empty.getAttribute('role'), 'status');
-  assert.equal(empty.textContent, 'No matching open items');
+  assert.equal(
+    empty.querySelector('[data-open-items-empty-title]').textContent,
+    'No matching open items',
+  );
+  assert.ok(empty.querySelector('[data-open-items-empty-icon]'));
+  assert.equal(empty.querySelector('[data-open-items-empty-icon]').getAttribute('aria-hidden'), 'true');
+  assert.equal(
+    empty.querySelector('[data-open-items-empty-hint]').textContent,
+    'Try a different number or keyword.',
+  );
+  const action = empty.querySelector('[data-open-items-empty-action]');
+  assert.ok(action);
+  assert.equal(action.textContent, 'Clear search');
+  assert.equal(action.tagName, 'BUTTON');
   assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 0);
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
 });
@@ -1799,8 +1910,108 @@ test('treats an empty type filter as no matches when another type has open items
   const rendered = filterOpenItems(harness, 'issue');
   const empty = rendered.panel.querySelector('[data-open-items-empty]');
   assert.equal(empty.getAttribute('role'), 'status');
-  assert.equal(empty.textContent, 'No matching open items');
+  assert.equal(
+    empty.querySelector('[data-open-items-empty-title]').textContent,
+    'No matching open items',
+  );
+  assert.equal(
+    empty.querySelector('[data-open-items-empty-hint]').textContent,
+    'Try a different number or keyword.',
+  );
+  // A type filter (not a query) hides everything: the single action widens it.
+  const action = empty.querySelector('[data-open-items-empty-action]');
+  assert.ok(action);
+  assert.equal(action.textContent, 'Show all types');
   assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '0');
+});
+
+// ---- #11 P1 spec §3: the empty state carries at most one action button that
+// removes the cause of the empty view.
+
+test('#11 P1 empty-state "Clear search" action clears the query, re-renders, and refocuses search', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Current issue' }]),
+      jsonResponse([{ iid: 8, title: 'Open MR' }]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  let rendered = searchOpenItems(harness, 'missing');
+  const empty = rendered.panel.querySelector('[data-open-items-empty]');
+  const action = empty.querySelector('[data-open-items-empty-action]');
+  assert.equal(action.textContent, 'Clear search');
+
+  action.dispatchEvent({ type: 'click' });
+  rendered = getBadge(harness.document);
+
+  // The search box itself must reflect the cleared query, not just the rows.
+  assert.equal(rendered.search.value, '');
+  assert.equal(rendered.panel.querySelector('[data-open-items-empty]'), null);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '2');
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.search);
+});
+
+test('#11 P1 empty-state "Show all types" action resets the type filter without refetching', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([]),
+      jsonResponse([{ iid: 8, title: 'Open MR' }]),
+    ],
+  });
+  await openAndLoad(harness);
+  const fetchCallsBeforeAction = harness.fetchCalls.length;
+
+  let rendered = filterOpenItems(harness, 'issue');
+  const action = rendered.panel.querySelector('[data-open-items-empty-action]');
+  assert.equal(action.textContent, 'Show all types');
+
+  action.dispatchEvent({ type: 'click' });
+  rendered = getBadge(harness.document);
+
+  assert.equal(rendered.filterAll.getAttribute('aria-pressed'), 'true');
+  assert.equal(rendered.panel.querySelector('[data-open-items-empty]'), null);
+  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 1);
+  assert.equal(rendered.panel.querySelector('[data-open-items-total]').textContent, '1');
+  // Pure client-side re-render: no extra API calls.
+  assert.equal(harness.fetchCalls.length, fetchCallsBeforeAction);
+});
+
+test('#11 P1 an issue-only list with an errored hidden MR group still shows the empty state', async () => {
+  // Issue-only list filter: the hidden MR group is unloaded/errored, so the
+  // project does NOT count as "no open items" and the visible issue group is
+  // empty. The structured empty state must still render, with the search hint
+  // and the "Show all types" action (the type filter is what hides everything).
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 2,
+        user: { listFilter: 'issue' },
+        userOverrides: { listFilter: true },
+      },
+    },
+    fetchResults: [
+      jsonResponse([]),
+      new Error('MR fetch blocked'),
+    ],
+  });
+  await openAndLoad(harness);
+
+  const rendered = getBadge(harness.document);
+  const empty = rendered.panel.querySelector('[data-open-items-empty]');
+  assert.ok(empty);
+  assert.equal(
+    empty.querySelector('[data-open-items-empty-title]').textContent,
+    'No matching open items',
+  );
+  assert.equal(
+    empty.querySelector('[data-open-items-empty-hint]').textContent,
+    'Try a different number or keyword.',
+  );
+  assert.equal(empty.querySelector('[data-open-items-empty-action]').textContent, 'Show all types');
+  // Only the visible issue group participates in the empty decision.
+  assert.equal(rendered.panel.querySelectorAll('[data-open-items-group]').length, 0);
 });
 
 test('keeps search, filter, panel state, and refresh focus during a manual refresh', async () => {
@@ -3370,6 +3581,48 @@ test('focus rings and the search box focus resolve from the shared --pin-focus-r
   assert.match(css, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?--pin-focus-ring:\s*#58a6ff/);
   const baseHost = css.split(/\n\s*\[data-reference-badge\]/, 1)[0];
   assert.ok(!baseHost.includes('#58a6ff'), 'bare :host must keep the light #0969da focus ring');
+});
+
+// ---- #11 P1 (spec §3/§4/§5): empty-state styles, the copy-success toast
+// surface, and the reduced-motion kill switch must all be present in the
+// injected shadow stylesheet with the manager-ruled landing tokens.
+
+test('#11 P1 BADGE_CSS carries the empty-state, toast, and reduced-motion rules', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/16');
+  await harness.flushMicrotasks();
+  const css = getBadge(harness.document).style.textContent;
+
+  // §3 empty state: flex column layout with the 120px floor.
+  assert.match(css, /\[data-open-items-empty\]\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\[data-open-items-empty\]\s*\{[^}]*min-height:\s*120px/);
+  assert.match(css, /\[data-open-items-empty-action\]:focus-visible/);
+
+  // §3 landing hook (manager ruling): the dark empty-state primary text is
+  // #f0f6fc (NOT the global #f0f2f5), mirrored in both dark scopes; the light
+  // default lives on the bare :host block only.
+  assert.match(css, /^\s*:host\s*\{[\s\S]*?--pin-empty-title:\s*#1f2328/);
+  assert.match(css, /:host\(\[data-theme="dark"\]\)\s*\{[\s\S]*?--pin-empty-title:\s*#f0f6fc/);
+  assert.match(css, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?--pin-empty-title:\s*#f0f6fc/);
+  const baseHost = css.split(/\n\s*\[data-reference-badge\]/, 1)[0];
+  assert.ok(!/--pin-empty-title:\s*#f0f6fc/.test(baseHost),
+    'bare :host must keep the light empty-title token');
+
+  // §4 toast: shares the tooltip anchor, sits above it, and suppresses it.
+  assert.match(css, /\[data-copy-toast\]\s*\{[\s\S]*?top:\s*calc\(100% \+ 7px\)/);
+  assert.match(css, /\[data-copy-toast\]\s*\{[\s\S]*?z-index:\s*2/);
+  assert.match(css, /\[data-copy-toast\]\s*\{[\s\S]*?background:\s*var\(--pin-surface-pop\)/);
+  assert.match(css, /\[data-copy-toast-icon\]\s*\{[\s\S]*?color:\s*var\(--pin-success-on-pop\)/);
+  assert.match(css, /\[data-copy-reference\]\[data-copy-toast="on"\]\s*\[data-copy-toast\]/);
+  assert.match(css, /\[data-copy-reference\]\[data-copy-toast="leaving"\]\s*\[data-copy-toast\]/);
+  // Mutual exclusion while both exist (spec §4 / manager ruling).
+  assert.match(css, /\[data-copy-reference\]\[data-copy-toast="on"\]\s*\[data-copy-tooltip\]/);
+  // Dark pop surface = #1f2227 per manager ruling; light = #24292f.
+  assert.match(css, /^\s*:host\s*\{[\s\S]*?--pin-surface-pop:\s*#24292f/);
+  assert.match(css, /:host\(\[data-theme="dark"\]\)\s*\{[\s\S]*?--pin-surface-pop:\s*#1f2227/);
+  assert.match(css, /@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?--pin-surface-pop:\s*#1f2227/);
+
+  // §5 reduced motion: transforms/transitions killed for the animated pops.
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\[data-copy-tooltip\][\s\S]*?\[data-copy-toast\][\s\S]*?transition:\s*none[\s\S]*?transform:\s*none/);
 });
 
 test('panel is announced as a labelled dialog and result rows use a roving tabindex', async () => {
