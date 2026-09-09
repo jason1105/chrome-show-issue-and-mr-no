@@ -1,0 +1,13 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 临时工作区（团队约定 .tmp-worktrees-<role>/<topic>）
+.tmp-worktrees-*/
+.tmp-worktree-*/
+.tmp-*
+
+# 日志
+*.log
+# 例外：issue #6 Edge 兼容性证据日志为审计链的一部分，须可继续入库
+!docs/evidence/**/*.log
