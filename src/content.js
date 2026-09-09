@@ -1161,11 +1161,20 @@
       : t('summaryFound', [String(state.totalCount)]);
     renderingNavigationPanel = true;
     try {
+      const rowFocused = shadowActiveIsRow(host);
       results.replaceChildren(...createNavigationResultChildren(state));
+      applyRovingTabindex(results, { restoreFocus: rowFocused });
     } finally {
       renderingNavigationPanel = false;
     }
-    applyRovingTabindex(results);
+  }
+
+  // #35 T2: whether keyboard focus is currently on a result row. Used to know
+  // that a re-render is about to replace the focused node — the browser then
+  // drops focus to <body>, so applyRovingTabindex must move it back.
+  function shadowActiveIsRow(host) {
+    const active = host?.shadowRoot?.activeElement;
+    return active?.getAttribute('data-open-item') !== null;
   }
 
   function renderNavigationPanel(host, { rebuildStatic = false } = {}) {
@@ -1326,11 +1335,12 @@
     }
     renderingNavigationPanel = true;
     try {
+      const rowFocused = shadowActiveIsRow(host);
       results.replaceChildren(...createNavigationResultChildren(state));
+      applyRovingTabindex(results, { restoreFocus: rowFocused });
     } finally {
       renderingNavigationPanel = false;
     }
-    applyRovingTabindex(results);
   }
 
   function abortStaleNavigationRequests() {
@@ -1653,7 +1663,7 @@
     return current || rows[0];
   }
 
-  function applyRovingTabindex(panel) {
+  function applyRovingTabindex(panel, { restoreFocus = false } = {}) {
     if (!panel) return;
     const rows = panel.querySelectorAll('[data-open-item]');
     if (!rows.length) return;
@@ -1664,6 +1674,17 @@
       if (isTarget) row.setAttribute('data-open-item-focus', 'true');
       else row.removeAttribute('data-open-item-focus');
     }
+    // #35 T2: a re-render that replaced the focused result row leaves focus on
+    // <body> in real browsers (removed nodes cannot stay focused). Restore it
+    // onto the roving target immediately so a Tab pressed during the render
+    // window cannot escape the panel. Only when the caller knew a row held
+    // focus before the swap, and only while the panel stays open — never steal
+    // focus that lives outside the panel (e.g. hover open).
+    if (!restoreFocus || !navigation.open || !focused) return;
+    const host = root.document.getElementById(HOST_ID);
+    const shadowActive = host?.shadowRoot?.activeElement;
+    if (shadowActive && host?.contains(shadowActive)) return;
+    focused.focus();
   }
 
   // #11: focus trap — when the panel is open, Tab/Shift+Tab cycle within the
@@ -1725,14 +1746,40 @@
     if (!next) return;
     event.preventDefault();
     event.stopPropagation();
-    for (const row of rows) row.removeAttribute('data-open-item-focus');
+    focusRovingRow(panel, next);
+  }
+
+  // #11: make one row the active roving target and move keyboard focus onto it.
+  function focusRovingRow(panel, next) {
+    if (!panel || !next) return;
+    for (const row of panel.querySelectorAll('[data-open-item]')) {
+      row.removeAttribute('data-open-item-focus');
+    }
     next.setAttribute('data-open-item-focus', 'true');
     applyRovingTabindex(panel);
     next.focus();
   }
 
   function handleSearchKeyboardEvent(event) {
-    if (event.type === 'keydown') handleNavigationKeydown(event);
+    if (event.type === 'keydown') {
+      handleNavigationKeydown(event);
+      // #35 T10: roving tabindex starts from the search box — the first
+      // ArrowDown moves focus onto the list's roving target (the current page's
+      // row, or the first row when absent), so the user can arrow through
+      // results without Tab-ing out of the panel first.
+      if (event.key === 'ArrowDown' && navigation.open && !event.defaultPrevented) {
+        const host = root.document.getElementById(HOST_ID);
+        const panel = host?.shadowRoot?.querySelector('[data-open-items-panel]');
+        if (panel && !panel.hidden) {
+          const rows = panel.querySelectorAll('[data-open-item]');
+          if (rows.length) {
+            event.preventDefault();
+            const focused = getRovingFocusTarget(panel);
+            focusRovingRow(panel, focused || rows[0]);
+          }
+        }
+      }
+    }
     event.stopPropagation();
   }
 

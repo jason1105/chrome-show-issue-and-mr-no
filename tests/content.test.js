@@ -3493,6 +3493,86 @@ test('open panel keeps Tab cycling within its controls (focus trap)', async () =
   assert.equal(closedTab.defaultPrevented !== true || closedTab.defaultPrevented === false, true);
 });
 
+test('#35 T10: ArrowDown in the search box moves focus onto a result row', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Current issue' },
+        { iid: 16, title: 'Second issue' },
+        { iid: 17, title: 'Third issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  const rows = rendered.panel.querySelectorAll('[data-open-item]');
+  assert.ok(rows.length >= 2);
+
+  // User is typing in the search box; the first ArrowDown starts roving
+  // tabindex from the search box instead of being swallowed.
+  rendered.search.focus();
+  const down = { type: 'keydown', key: 'ArrowDown' };
+  rendered.search.dispatchEvent(down);
+  assert.equal(down.defaultPrevented, true);
+  assert.equal(harness.document.activeElement, rows[0]);
+  assert.equal(rows[0].getAttribute('data-open-item-focus'), 'true');
+  assert.equal(rows[0].getAttribute('tabindex'), '0');
+
+  // Subsequent ArrowDown keeps roving within the list (via the panel handler).
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+  assert.equal(harness.document.activeElement, rows[1]);
+  assert.equal(rows[1].getAttribute('data-open-item-focus'), 'true');
+  assert.equal(rows[1].getAttribute('tabindex'), '0');
+});
+
+test('#35 T2: re-render restores roving focus when the focused result row is replaced', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Current issue' },
+        { iid: 16, title: 'Second issue' },
+        { iid: 17, title: 'Third issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  const rows = rendered.panel.querySelectorAll('[data-open-item]');
+  assert.ok(rows.length >= 2);
+
+  // Move roving focus onto the second row (real arrow navigation).
+  rendered.panel.dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+  assert.equal(harness.document.activeElement, rows[1]);
+
+  // A search re-render replaces the results container's children. In a real
+  // browser the focused node is removed and focus drops to <body>; the roving
+  // target must be re-focused so a Tab in the render window cannot escape.
+  rendered = searchOpenItems(harness, 'issue');
+  const rowsAfter = rendered.panel.querySelectorAll('[data-open-item]');
+  assert.ok(rowsAfter.length >= 1);
+  const active = harness.document.activeElement;
+  assert.equal(active.getAttribute('data-open-item'), '');
+  assert.equal(active.getAttribute('data-open-item-focus'), 'true');
+  assert.equal(active.getAttribute('tabindex'), '0');
+});
+
+test('#35 T2: re-render while typing keeps focus in the search box', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 15, title: 'Current issue' },
+        { iid: 16, title: 'Second issue' },
+      ]),
+      jsonResponse([]),
+    ],
+  });
+  let rendered = await openAndLoad(harness);
+  rendered.search.focus();
+  rendered = searchOpenItems(harness, 'second');
+  assert.equal(harness.document.activeElement, rendered.search);
+  assert.equal(harness.document.activeElement.getAttribute('data-open-items-search'), '');
+});
+
 test('destroy disconnects the theme observer without leaking listeners', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/6');
   await harness.flushMicrotasks();
