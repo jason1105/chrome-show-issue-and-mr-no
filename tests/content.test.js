@@ -3753,6 +3753,143 @@ test('open panel keeps Tab cycling within its controls (focus trap)', async () =
   assert.equal(closedTab.defaultPrevented !== true || closedTab.defaultPrevented === false, true);
 });
 
+// #41 regression: the former !host.contains(active) fallback on BOTH branches
+// was a false trigger — Node.contains() never crosses the shadow boundary, so
+// host.contains(active) is always false for focus inside the panel. Every Tab
+// from a middle control was hijacked (forward -> first, Shift+Tab -> last).
+// The trap is now pure boundary wrapping: middle-control Tab / Shift+Tab must
+// be left untouched (no preventDefault, focus unchanged). This test FAILS on
+// baseline 2374326 (shift branch) and on 5c6bc0e (both branches).
+test('#41 regression: middle panel control keeps focus on Tab and Shift+Tab (no boundary hijack)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Current issue' }]),
+      jsonResponse([]),
+    ],
+  });
+  const rendered = getBadge(harness.document);
+
+  rendered.trigger.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(150);
+  assert.equal(rendered.panel.hidden, false);
+
+  const focusable = rendered.panel
+    .querySelectorAll('button, input, [href], [tabindex]')
+    .filter((node) => !node.hidden
+      && node.disabled !== true
+      && node.getAttribute('disabled') === null
+      && node.getAttribute('tabindex') !== '-1');
+  assert.ok(focusable.length >= 3);
+  const middle = focusable[1];
+  middle.focus();
+  assert.equal(harness.document.activeElement, middle);
+
+  let preventedForward = false;
+  rendered.panel.dispatchEvent({
+    type: 'keydown', key: 'Tab',
+    preventDefault() { preventedForward = true; },
+  });
+  assert.equal(preventedForward, false);
+  assert.equal(harness.document.activeElement, middle);
+
+  let preventedBack = false;
+  rendered.panel.dispatchEvent({
+    type: 'keydown', key: 'Tab', shiftKey: true,
+    preventDefault() { preventedBack = true; },
+  });
+  assert.equal(preventedBack, false);
+  assert.equal(harness.document.activeElement, middle);
+});
+
+// #41 (reachable): the panel-scoped trap cannot see a Tab whose focus origin is
+// outside the panel (NULL shadowRoot.activeElement), so the NULL -> drag-handle
+// escape is only stoppable at the document level. These dispatch on
+// harness.document because the harness's dispatchEvent only triggers listeners
+// on the target itself (no ancestor bubbling) — document dispatch is the exact
+// real-world reachable route (focus on <body>, Tab caught in document capture).
+// The middle-control regression test above (panel dispatch) keeps the pure
+// boundary-wrap contract on the record: mid-list Tab/Shift+Tab must NOT be
+// intercepted (no preventDefault, focus unchanged).
+test('document-level Tab intercepts a NULL focus back into the panel (#41, forward and back)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([]),
+      jsonResponse([]),
+    ],
+  });
+  const rendered = getBadge(harness.document);
+
+  // Hover opens the panel without moving focus into it (shadow activeElement NULL).
+  rendered.trigger.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(150);
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.host.shadowRoot.activeElement, null);
+
+  const focusable = rendered.panel
+    .querySelectorAll('button, input, [href], [tabindex]')
+    .filter((node) => !node.hidden
+      && node.disabled !== true
+      && node.getAttribute('disabled') === null
+      && node.getAttribute('tabindex') !== '-1');
+  assert.ok(focusable.length >= 3);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  let prevented = false;
+  harness.document.dispatchEvent({
+    type: 'keydown', key: 'Tab',
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(harness.document.activeElement, first);
+
+  // The forward rescue moved focus into the panel, which would make the next
+  // Tab early-return; reset the NULL-focus precondition to model a fresh
+  // drop-to-body before exercising the Shift+Tab rescue direction.
+  rendered.host.shadowRoot.activeElement = null;
+  harness.document.activeElement = null;
+
+  let preventedBack = false;
+  harness.document.dispatchEvent({
+    type: 'keydown', key: 'Tab', shiftKey: true,
+    preventDefault() { preventedBack = true; },
+  });
+  assert.equal(preventedBack, true);
+  assert.equal(harness.document.activeElement, last);
+});
+
+// #41 compat: when focus is still inside the widget (badge or panel), the
+// document listener must early-return and leave Tab to the badge/panel native
+// ordering — proving hover-open (non-modal) semantics survive the new layer.
+test('document-level Tab leaves panel focus untouched when focus is inside the widget (#41 compat)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([]),
+      jsonResponse([]),
+    ],
+  });
+  const rendered = getBadge(harness.document);
+  rendered.trigger.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(150);
+  assert.equal(rendered.panel.hidden, false);
+
+  const focusable = rendered.panel
+    .querySelectorAll('button, input, [href], [tabindex]')
+    .filter((node) => !node.hidden
+      && node.disabled !== true
+      && node.getAttribute('disabled') === null
+      && node.getAttribute('tabindex') !== '-1');
+  focusable[focusable.length - 1].focus();
+  assert.ok(rendered.host.shadowRoot.activeElement);
+
+  let prevented = false;
+  harness.document.dispatchEvent({
+    type: 'keydown', key: 'Tab',
+    preventDefault() { prevented = true; },
+  });
+  assert.equal(prevented, false); // document listener early-returns on in-widget focus
+});
+
 test('#35 T10: ArrowDown in the search box moves focus onto a result row', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [
