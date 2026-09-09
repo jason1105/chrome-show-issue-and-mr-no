@@ -303,6 +303,22 @@
     "message": "No matching items",
     "description": "Empty result state for all items."
   },
+  "emptyHintSearch": {
+    "message": "Try a different number or keyword.",
+    "description": "Helper text under the empty state when a search query filtered everything out."
+  },
+  "emptyHintNoOpen": {
+    "message": "This project has no items to show yet.",
+    "description": "Helper text under the empty state when the project has no items at all."
+  },
+  "emptyClearSearch": {
+    "message": "Clear search",
+    "description": "Action button in the empty state that clears the panel search query."
+  },
+  "emptyShowAllTypes": {
+    "message": "Show all types",
+    "description": "Action button in the empty state that widens the type filter back to all items."
+  },
   "panelHeading": {
     "message": "Open items",
     "description": "Panel heading."

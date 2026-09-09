@@ -26,6 +26,10 @@
         --pin-bg-marker: rgba(9, 105, 218, 0.12);
         --pin-bg-tooltip: #24292f;
         --pin-bg-warning: #fff8c5;
+        --pin-surface-pop: #24292f;
+        --pin-success-on-pop: #7ee787;
+        --pin-empty-title: #1f2328;
+        --pin-empty-illustration: #57606a;
         --pin-text-primary: #1f2937;
         --pin-text-input: #24292f;
         --pin-text-hover: #24292f;
@@ -489,11 +493,64 @@
         font-size: 12px;
       }
 
+      /* #11 P1 empty state (spec §3): centered flex column with a decorative
+         illustration, a 500-weight primary title, an optional muted helper, and
+         at most one action button reusing the filter affordance. */
       [data-open-items-empty] {
-        padding: 28px 16px 30px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 120px;
+        padding: 24px 16px;
+        text-align: center;
+      }
+
+      [data-open-items-empty-icon] {
+        display: block;
+        flex: none;
+        color: var(--pin-empty-illustration);
+      }
+
+      [data-open-items-empty-title] {
+        color: var(--pin-empty-title);
+        font-size: 14px;
+        line-height: 20px;
+        font-weight: 500;
+      }
+
+      [data-open-items-empty-hint] {
         color: var(--pin-text-muted);
         font-size: 12px;
-        text-align: center;
+        line-height: 18px;
+      }
+
+      [data-open-items-empty-action] {
+        box-sizing: border-box;
+        min-height: 28px;
+        margin: 4px 0 0;
+        padding: 4px 10px;
+        border: 1px solid var(--pin-border-filter-inner);
+        border-radius: 6px;
+        background: var(--pin-bg-surface);
+        color: var(--pin-text-secondary);
+        font: 500 12px/18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        cursor: pointer;
+        appearance: none;
+      }
+
+      [data-open-items-empty-action]:hover {
+        background: var(--pin-bg-hover-soft);
+        color: var(--pin-text-hover-strong);
+      }
+
+      [data-open-items-empty-action]:focus-visible {
+        position: relative;
+        z-index: 1;
+        outline: var(--pin-focus-ring-width) solid var(--pin-focus-ring);
+        outline-offset: -2px;
       }
 
       [data-open-item] {
@@ -625,6 +682,63 @@
         transform: translateY(0);
       }
 
+      /* #11 P1 copy-success toast (spec §4): anchored under the copy button
+         like the tooltip, but stacked above it (z-index 2). It is mutually
+         exclusive with the tooltip while visible — the suppression rules below
+         come after the hover/focus reveal so they win at equal specificity.
+         Scoped to the direct child span: the button itself carries
+         [data-copy-toast] as the on/leaving STATE attribute (content.js), so a
+         bare selector would hide the button and its whole subtree (the #43
+         empty-toast regression). */
+      [data-copy-reference] > [data-copy-toast] {
+        box-sizing: border-box;
+        position: absolute;
+        top: calc(100% + 7px);
+        right: -5px;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        max-width: 240px;
+        padding: 7px 11px;
+        border-radius: 6px;
+        background: var(--pin-surface-pop);
+        box-shadow: 0 2px 8px var(--pin-shadow-tooltip);
+        color: #ffffff;
+        font: 600 12px/16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        white-space: nowrap;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-2px);
+        transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
+        pointer-events: none;
+      }
+
+      [data-copy-toast-icon] {
+        display: block;
+        flex: none;
+        color: var(--pin-success-on-pop);
+      }
+
+      [data-copy-reference][data-copy-toast="on"] [data-copy-toast] {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+      }
+
+      /* Fade-out: same spot, so a repeated copy replaces the toast in place. */
+      [data-copy-reference][data-copy-toast="leaving"] [data-copy-toast] {
+        opacity: 0;
+        transform: translateY(-2px);
+      }
+
+      [data-copy-reference][data-copy-toast="on"] [data-copy-tooltip],
+      [data-copy-reference][data-copy-toast="leaving"] [data-copy-tooltip] {
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-2px);
+      }
+
       [data-copy-announcement],
       [data-open-items-search-summary] {
         position: absolute;
@@ -659,6 +773,10 @@
           --pin-bg-selected: rgba(9, 105, 218, 0.28);
           --pin-bg-current: rgba(9, 105, 218, 0.24);
           --pin-bg-warning: #4d2d00;
+          --pin-surface-pop: #1f2227;
+          --pin-success-on-pop: #7ee787;
+          --pin-empty-title: #f0f6fc;
+          --pin-empty-illustration: #8b949e;
           --pin-text-primary: #f0f2f5;
           --pin-text-input: #f0f2f5;
           --pin-text-hover: #f0f2f5;
@@ -705,6 +823,10 @@
         --pin-bg-selected: rgba(9, 105, 218, 0.28);
         --pin-bg-current: rgba(9, 105, 218, 0.24);
         --pin-bg-warning: #4d2d00;
+        --pin-surface-pop: #1f2227;
+        --pin-success-on-pop: #7ee787;
+        --pin-empty-title: #f0f6fc;
+        --pin-empty-illustration: #8b949e;
         --pin-text-primary: #f0f2f5;
         --pin-text-input: #f0f2f5;
         --pin-text-hover: #f0f2f5;
@@ -743,6 +865,17 @@
 
         [data-open-items-filter] {
           flex: 1 1 0;
+        }
+      }
+
+      /* #11 P1 reduced motion (spec §5): the toast is the only animated
+         surface. Under prefers-reduced-motion, kill its transform/transition
+         so it shows and hides instantly (no displacement, no fade). */
+      @media (prefers-reduced-motion: reduce) {
+        [data-copy-tooltip],
+        [data-copy-reference] > [data-copy-toast] {
+          transition: none;
+          transform: none;
         }
       }
   `;

@@ -4,6 +4,8 @@
   const HOST_ID = 'gitlab-reference-badge-host';
   const PANEL_ID = 'gitlab-open-items-panel';
   const FEEDBACK_DURATION_MS = 1500;
+  const TOAST_DWELL_MS = 1800;
+  const TOAST_FADE_MS = 150;
   const HOVER_OPEN_DELAY_MS = 150;
   const HOVER_CLOSE_DELAY_MS = 250;
   const POSITION_SAVE_DELAY_MS = 200;
@@ -64,6 +66,8 @@
   let lastUrl = root.location.href;
   let frameId = null;
   let feedbackTimerId = null;
+  let toastTimerId = null;
+  let toastFadeTimerId = null;
   let navigationOpenTimerId = null;
   let navigationCloseTimerId = null;
   let copyGeneration = 0;
@@ -397,9 +401,84 @@
     feedbackTimerId = null;
   }
 
+  // #11 P1 copy-success toast: a separate, replace-in-place surface anchored
+  // under the copy button (same anchor as the tooltip). The two coexist in the
+  // DOM but are mutually exclusive visually: while the toast is on, the CSS
+  // suppresses the tooltip. It lives 1800ms, then fades over 150ms (see
+  // badge-css.js [data-copy-toast]); reduced-motion users get instant show/hide.
+  function clearToastTimers() {
+    if (toastTimerId !== null) {
+      root.clearTimeout(toastTimerId);
+      toastTimerId = null;
+    }
+    if (toastFadeTimerId !== null) {
+      root.clearTimeout(toastFadeTimerId);
+      toastFadeTimerId = null;
+    }
+  }
+
+  function isCurrentCopy(host, generation) {
+    return !destroyed
+      && generation === copyGeneration
+      && host === root.document.getElementById(HOST_ID);
+  }
+
+  function prefersReducedMotion() {
+    try {
+      return root.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    } catch {
+      return false;
+    }
+  }
+
+  function hideCopyToast(host, generation) {
+    const { button } = getBadgeParts(host);
+    if (!button) return;
+    if (prefersReducedMotion()) {
+      button.removeAttribute('data-copy-toast');
+      return;
+    }
+    // 'leaving' drives the CSS fade-out; the attribute is dropped after the
+    // fade so the same-position replace stays seamless (no stacking).
+    button.setAttribute('data-copy-toast', 'leaving');
+    clearToastTimers();
+    toastFadeTimerId = root.setTimeout(() => {
+      toastFadeTimerId = null;
+      if (button.getAttribute('data-copy-toast') === 'leaving') {
+        button.removeAttribute('data-copy-toast');
+      }
+    }, TOAST_FADE_MS);
+  }
+
+  function showCopyToast(host, generation) {
+    const { button, toast } = getBadgeParts(host);
+    if (!button || !toast) return;
+    clearToastTimers();
+    const label = toast.querySelector('[data-copy-toast-label]');
+    if (label) label.textContent = t('copied');
+    button.setAttribute('data-copy-toast', 'on');
+    toastTimerId = root.setTimeout(() => {
+      toastTimerId = null;
+      if (!isCurrentCopy(host, generation)) return;
+      hideCopyToast(host, generation);
+    }, TOAST_DWELL_MS);
+  }
+
+  // Instantly clear the toast (no fade-out): used when a new copy starts or
+  // fails so the replacement happens in place instead of animating a stale one.
+  function clearCopyToast(host) {
+    const { button } = getBadgeParts(host);
+    clearToastTimers();
+    if (button) button.removeAttribute('data-copy-toast');
+  }
+
   function invalidateCopyOperations() {
     copyGeneration += 1;
     clearFeedbackTimer();
+    clearToastTimers();
+    const host = root.document.getElementById(HOST_ID);
+    const button = host?.shadowRoot?.querySelector('[data-copy-reference]');
+    if (button) button.removeAttribute('data-copy-toast');
   }
 
   function clearNavigationOpenTimer() {
@@ -853,10 +932,12 @@
       label: shadow?.querySelector('[data-reference-label]'),
       button: shadow?.querySelector('[data-copy-reference]'),
       tooltip: shadow?.querySelector('[data-copy-tooltip]'),
+      toast: shadow?.querySelector('[data-copy-toast]'),
       icon: shadow?.querySelector('[data-copy-icon]'),
       announcement: shadow?.querySelector('[data-copy-announcement]'),
       panel: shadow?.querySelector('[data-open-items-panel]'),
       refresh: shadow?.querySelector('[data-refresh-open-items]'),
+      search: shadow?.querySelector('[data-open-items-search]'),
     };
   }
 
@@ -883,15 +964,17 @@
     clearFeedbackTimer();
     feedbackTimerId = root.setTimeout(() => {
       feedbackTimerId = null;
-      if (
-        destroyed
-        || generation !== copyGeneration
-        || host !== root.document.getElementById(HOST_ID)
-      ) {
-        return;
-      }
+      if (!isCurrentCopy(host, generation)) return;
       setDefaultFeedback(host, copyText);
     }, FEEDBACK_DURATION_MS);
+
+    // #11 P1: a visible toast for successful copies only. A failure clears any
+    // in-flight toast; the tooltip already carries the copyFailed feedback.
+    if (succeeded) {
+      showCopyToast(host, generation);
+    } else {
+      clearCopyToast(host);
+    }
   }
 
   function fallbackCopy(text) {
@@ -939,6 +1022,7 @@
     const generation = copyGeneration + 1;
     copyGeneration = generation;
     clearFeedbackTimer();
+    clearCopyToast(host);
     setDefaultFeedback(host, text);
 
     const isCurrent = () => (
@@ -1109,6 +1193,85 @@
     };
   }
 
+  // #11 P1 structured empty state (spec §3): decorative 48×48 illustration,
+  // primary title, optional helper line, and at most one action button. The
+  // helper distinguishes "no match" (query or type filter) from a project with
+  // nothing to show at all (all items closed under the current state filter).
+  function createEmptyState(allMode) {
+    const container = root.document.createElement('div');
+    container.setAttribute('data-open-items-empty', '');
+    container.setAttribute('role', 'status');
+
+    const namespace = 'http://www.w3.org/2000/svg';
+    const illustration = root.document.createElementNS(namespace, 'svg');
+    illustration.setAttribute('data-open-items-empty-icon', '');
+    illustration.setAttribute('viewBox', '0 0 48 48');
+    illustration.setAttribute('width', '48');
+    illustration.setAttribute('height', '48');
+    illustration.setAttribute('fill', 'currentColor');
+    illustration.setAttribute('aria-hidden', 'true');
+    illustration.setAttribute('focusable', 'false');
+    const searchPath = root.document.createElementNS(namespace, 'path');
+    searchPath.setAttribute(
+      'd',
+      'M21 7a14 14 0 1 0 8.5 25l7.75 7.75a1.5 1.5 0 0 0 2.12-2.12L31.6 29.9A14 14 0 0 0 21 7Zm0 3a11 11 0 1 1 0 22 11 11 0 0 1 0-22Z',
+    );
+    illustration.append(searchPath);
+
+    const title = root.document.createElement('div');
+    title.setAttribute('data-open-items-empty-title', '');
+    title.textContent = allMode ? t('emptyNoMatchAll') : t('emptyNoMatchOpen');
+
+    const hasQuery = navigation.query.trim() !== '';
+    const hasTypeFilter = navigation.listFilter !== 'all';
+    const hint = root.document.createElement('div');
+    hint.setAttribute('data-open-items-empty-hint', '');
+    hint.textContent = (hasQuery || hasTypeFilter)
+      ? t('emptyHintSearch')
+      : t('emptyHintNoOpen');
+
+    container.append(illustration, title, hint);
+
+    if (hasQuery) {
+      const action = root.document.createElement('button');
+      action.setAttribute('type', 'button');
+      action.setAttribute('data-open-items-empty-action', '');
+      action.textContent = t('emptyClearSearch');
+      action.addEventListener('click', handleEmptyClearSearch);
+      container.append(action);
+    } else if (hasTypeFilter) {
+      const action = root.document.createElement('button');
+      action.setAttribute('type', 'button');
+      action.setAttribute('data-open-items-empty-action', '');
+      action.textContent = t('emptyShowAllTypes');
+      action.addEventListener('click', handleEmptyShowAllTypes);
+      container.append(action);
+    }
+    return container;
+  }
+
+  function handleEmptyClearSearch() {
+    navigation.query = '';
+    navigation.searchOwned = true;
+    const host = root.document.getElementById(HOST_ID);
+    if (!host) return;
+    // Full panel re-render, not just results: the search input value is synced
+    // from navigation.query here (renderNavigationResults only replaces rows).
+    renderNavigationPanel(host);
+    persistSearchState();
+    getBadgeParts(host).search?.focus();
+  }
+
+  function handleEmptyShowAllTypes() {
+    if (navigation.listFilter === 'all') return;
+    navigation.listFilter = 'all';
+    navigation.searchOwned = true;
+    const host = root.document.getElementById(HOST_ID);
+    if (!host) return;
+    renderNavigationPanel(host);
+    persistSearchState({ immediate: true });
+  }
+
   function createNavigationResultChildren(state) {
     const children = [];
     if (navigation.message) {
@@ -1121,11 +1284,7 @@
     const allMode = getItemStateFilter() === 'all';
     const naturalEmpty = navigation.query.trim() === '' && state.projectHasNoOpenItems;
     if (state.visibleGroupsReady && state.totalCount === 0 && !naturalEmpty) {
-      const empty = root.document.createElement('div');
-      empty.setAttribute('data-open-items-empty', '');
-      empty.setAttribute('role', 'status');
-      empty.textContent = allMode ? t('emptyNoMatchAll') : t('emptyNoMatchOpen');
-      children.push(empty);
+      children.push(createEmptyState(allMode));
       return children;
     }
     if (state.visibleKinds.includes('issue')) {
@@ -1918,7 +2077,32 @@
     const tooltip = root.document.createElement('span');
     tooltip.setAttribute('data-copy-tooltip', '');
     tooltip.setAttribute('role', 'tooltip');
-    button.append(icon, tooltip);
+
+    // #11 P1 copy-success toast (spec §4): shares the copy button as its
+    // anchor with the tooltip and the same drop-down position, but stacks above
+    // it (z-index 2). The label is set per show via t('copied'); the element is
+    // aria-hidden so screen readers hear the [data-copy-announcement] only.
+    const toast = root.document.createElement('span');
+    toast.setAttribute('data-copy-toast', '');
+    toast.setAttribute('aria-hidden', 'true');
+    const namespace = 'http://www.w3.org/2000/svg';
+    const toastIcon = root.document.createElementNS(namespace, 'svg');
+    toastIcon.setAttribute('data-copy-toast-icon', '');
+    toastIcon.setAttribute('viewBox', '0 0 16 16');
+    toastIcon.setAttribute('width', '16');
+    toastIcon.setAttribute('height', '16');
+    toastIcon.setAttribute('fill', 'currentColor');
+    toastIcon.setAttribute('aria-hidden', 'true');
+    const checkPath = root.document.createElementNS(namespace, 'path');
+    checkPath.setAttribute(
+      'd',
+      'M13.78 4.22a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0L3.22 8.28a.75.75 0 0 1 1.06-1.06L7 9.94l5.72-5.72a.75.75 0 0 1 1.06 0Z',
+    );
+    toastIcon.append(checkPath);
+    const toastLabel = root.document.createElement('span');
+    toastLabel.setAttribute('data-copy-toast-label', '');
+    toast.append(toastIcon, toastLabel);
+    button.append(icon, tooltip, toast);
 
     const announcement = root.document.createElement('span');
     announcement.setAttribute('data-copy-announcement', '');
