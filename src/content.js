@@ -1720,16 +1720,11 @@
     const last = focusable[focusable.length - 1];
     const active = host.shadowRoot.activeElement;
     if (event.shiftKey) {
-      if (active === first || !host.contains(active)) {
+      if (active === first) {
         event.preventDefault();
         last.focus();
       }
-    } else if (active === last || !host.contains(active)) {
-      // Defensive symmetry only: host.contains() is always false for elements
-      // inside the host's own shadow root, so this forward branch is dead code
-      // in real browsers (same as the Shift+Tab mirror). The reachable #41 fix
-      // is handleDocumentTabKeydown, which intercepts a NULL focus origin at
-      // the document level before native traversal can escape to drag-handle.
+    } else if (active === last) {
       event.preventDefault();
       first.focus();
     }

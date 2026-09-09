@@ -3493,11 +3493,14 @@ test('open panel keeps Tab cycling within its controls (focus trap)', async () =
   assert.equal(closedTab.defaultPrevented !== true || closedTab.defaultPrevented === false, true);
 });
 
-// #41: the forward Tab branch was missing the Shift+Tab guard's
-// !host.contains(active) fallback, so a NULL shadowRoot.activeElement (focus
-// dropped to the page, e.g. after hover-open) escaped to native traversal and
-// landed on the drag handle. The guard must wrap it back to the first control.
-test('forward Tab wraps to the first panel control when focus sits outside the panel (#41 guard)', async () => {
+// #41 regression: the former !host.contains(active) fallback on BOTH branches
+// was a false trigger — Node.contains() never crosses the shadow boundary, so
+// host.contains(active) is always false for focus inside the panel. Every Tab
+// from a middle control was hijacked (forward -> first, Shift+Tab -> last).
+// The trap is now pure boundary wrapping: middle-control Tab / Shift+Tab must
+// be left untouched (no preventDefault, focus unchanged). This test FAILS on
+// baseline 2374326 (shift branch) and on 5c6bc0e (both branches).
+test('#41 regression: middle panel control keeps focus on Tab and Shift+Tab (no boundary hijack)', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [
       jsonResponse([{ iid: 15, title: 'Current issue' }]),
@@ -3506,12 +3509,9 @@ test('forward Tab wraps to the first panel control when focus sits outside the p
   });
   const rendered = getBadge(harness.document);
 
-  // Hover opens the panel without moving focus into it, so the shadow root's
-  // activeElement stays NULL — the exact state the bug escaped from.
   rendered.trigger.dispatchEvent({ type: 'mouseenter' });
   harness.advanceTimersBy(150);
   assert.equal(rendered.panel.hidden, false);
-  assert.equal(rendered.host.shadowRoot.activeElement, null);
 
   const focusable = rendered.panel
     .querySelectorAll('button, input, [href], [tabindex]')
@@ -3520,13 +3520,25 @@ test('forward Tab wraps to the first panel control when focus sits outside the p
       && node.getAttribute('disabled') === null
       && node.getAttribute('tabindex') !== '-1');
   assert.ok(focusable.length >= 3);
-  const first = focusable[0];
+  const middle = focusable[1];
+  middle.focus();
+  assert.equal(harness.document.activeElement, middle);
 
-  let prevented = false;
-  const tabForward = { type: 'keydown', key: 'Tab', preventDefault() { prevented = true; } };
-  rendered.panel.dispatchEvent(tabForward);
-  assert.equal(prevented, true);
-  assert.equal(harness.document.activeElement, first);
+  let preventedForward = false;
+  rendered.panel.dispatchEvent({
+    type: 'keydown', key: 'Tab',
+    preventDefault() { preventedForward = true; },
+  });
+  assert.equal(preventedForward, false);
+  assert.equal(harness.document.activeElement, middle);
+
+  let preventedBack = false;
+  rendered.panel.dispatchEvent({
+    type: 'keydown', key: 'Tab', shiftKey: true,
+    preventDefault() { preventedBack = true; },
+  });
+  assert.equal(preventedBack, false);
+  assert.equal(harness.document.activeElement, middle);
 });
 
 // #41 (reachable): the panel-scoped trap cannot see a Tab whose focus origin is
@@ -3535,8 +3547,9 @@ test('forward Tab wraps to the first panel control when focus sits outside the p
 // harness.document because the harness's dispatchEvent only triggers listeners
 // on the target itself (no ancestor bubbling) — document dispatch is the exact
 // real-world reachable route (focus on <body>, Tab caught in document capture).
-// The A-guard test above (panel dispatch) models an unreachable-in-browser path
-// and stays only as dead-code symmetry coverage.
+// The middle-control regression test above (panel dispatch) keeps the pure
+// boundary-wrap contract on the record: mid-list Tab/Shift+Tab must NOT be
+// intercepted (no preventDefault, focus unchanged).
 test('document-level Tab intercepts a NULL focus back into the panel (#41, forward and back)', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [
