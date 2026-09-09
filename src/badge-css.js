@@ -685,8 +685,12 @@
       /* #11 P1 copy-success toast (spec §4): anchored under the copy button
          like the tooltip, but stacked above it (z-index 2). It is mutually
          exclusive with the tooltip while visible — the suppression rules below
-         come after the hover/focus reveal so they win at equal specificity. */
-      [data-copy-toast] {
+         come after the hover/focus reveal so they win at equal specificity.
+         Scoped to the direct child span: the button itself carries
+         [data-copy-toast] as the on/leaving STATE attribute (content.js), so a
+         bare selector would hide the button and its whole subtree (the #43
+         empty-toast regression). */
+      [data-copy-reference] > [data-copy-toast] {
         box-sizing: border-box;
         position: absolute;
         top: calc(100% + 7px);
@@ -869,7 +873,7 @@
          so it shows and hides instantly (no displacement, no fade). */
       @media (prefers-reduced-motion: reduce) {
         [data-copy-tooltip],
-        [data-copy-toast] {
+        [data-copy-reference] > [data-copy-toast] {
           transition: none;
           transform: none;
         }

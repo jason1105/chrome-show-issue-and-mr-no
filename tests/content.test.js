@@ -3608,9 +3608,16 @@ test('#11 P1 BADGE_CSS carries the empty-state, toast, and reduced-motion rules'
     'bare :host must keep the light empty-title token');
 
   // §4 toast: shares the tooltip anchor, sits above it, and suppresses it.
-  assert.match(css, /\[data-copy-toast\]\s*\{[\s\S]*?top:\s*calc\(100% \+ 7px\)/);
-  assert.match(css, /\[data-copy-toast\]\s*\{[\s\S]*?z-index:\s*2/);
-  assert.match(css, /\[data-copy-toast\]\s*\{[\s\S]*?background:\s*var\(--pin-surface-pop\)/);
+  // The base styling is scoped to the direct child span so the state attribute
+  // on the button ([data-copy-reference][data-copy-toast]) never matches this
+  // selector (manager-ruled, #43 regression guard). Layout props live on it.
+  assert.match(css, /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[\s\S]*?top:\s*calc\(100% \+ 7px\)/);
+  assert.match(css, /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[\s\S]*?z-index:\s*2/);
+  assert.match(css, /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[\s\S]*?background:\s*var\(--pin-surface-pop\)/);
+  // A bare selector at the start of a rule (the #43 collision that hid the whole
+  // button subtree) must be gone — the toast span is always the direct child.
+  assert.ok(!/\n\s*\[data-copy-toast\]\s*\{/.test(css),
+    'no bare [data-copy-toast] base selector — must be scoped under the copy button');
   assert.match(css, /\[data-copy-toast-icon\]\s*\{[\s\S]*?color:\s*var\(--pin-success-on-pop\)/);
   assert.match(css, /\[data-copy-reference\]\[data-copy-toast="on"\]\s*\[data-copy-toast\]/);
   assert.match(css, /\[data-copy-reference\]\[data-copy-toast="leaving"\]\s*\[data-copy-toast\]/);
