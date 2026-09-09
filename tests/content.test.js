@@ -3493,6 +3493,42 @@ test('open panel keeps Tab cycling within its controls (focus trap)', async () =
   assert.equal(closedTab.defaultPrevented !== true || closedTab.defaultPrevented === false, true);
 });
 
+// #41: the forward Tab branch was missing the Shift+Tab guard's
+// !host.contains(active) fallback, so a NULL shadowRoot.activeElement (focus
+// dropped to the page, e.g. after hover-open) escaped to native traversal and
+// landed on the drag handle. The guard must wrap it back to the first control.
+test('forward Tab wraps to the first panel control when focus sits outside the panel (#41 guard)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Current issue' }]),
+      jsonResponse([]),
+    ],
+  });
+  const rendered = getBadge(harness.document);
+
+  // Hover opens the panel without moving focus into it, so the shadow root's
+  // activeElement stays NULL — the exact state the bug escaped from.
+  rendered.trigger.dispatchEvent({ type: 'mouseenter' });
+  harness.advanceTimersBy(150);
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.host.shadowRoot.activeElement, null);
+
+  const focusable = rendered.panel
+    .querySelectorAll('button, input, [href], [tabindex]')
+    .filter((node) => !node.hidden
+      && node.disabled !== true
+      && node.getAttribute('disabled') === null
+      && node.getAttribute('tabindex') !== '-1');
+  assert.ok(focusable.length >= 3);
+  const first = focusable[0];
+
+  let prevented = false;
+  const tabForward = { type: 'keydown', key: 'Tab', preventDefault() { prevented = true; } };
+  rendered.panel.dispatchEvent(tabForward);
+  assert.equal(prevented, true);
+  assert.equal(harness.document.activeElement, first);
+});
+
 test('#35 T10: ArrowDown in the search box moves focus onto a result row', async () => {
   const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [

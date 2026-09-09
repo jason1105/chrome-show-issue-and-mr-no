@@ -1718,7 +1718,10 @@
         event.preventDefault();
         last.focus();
       }
-    } else if (active === last) {
+    } else if (active === last || !host.contains(active)) {
+      // Forward branch mirrors the Shift+Tab guard: when activeElement is NULL
+      // or sits outside the host (focus dropped to the page), keep Tab cycling
+      // inside the panel instead of letting native traversal escape.
       event.preventDefault();
       first.focus();
     }
