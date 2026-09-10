@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome Web Store Screenshots Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+            background: #f5f7fa;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            color: #1f2328;
+            margin-bottom: 12px;
+        }
+        
+        .subtitle {
+            color: #656d76;
+            font-size: 16px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #656d76;
+        }
+        
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .stat .value {
+            font-weight: 600;
+            color: #1f2328;
+        }
+        
+        .screenshots {
+            display: grid;
+            gap: 40px;
+        }
+        
+        .screenshot-item {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .screenshot-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #e7eaed;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .screenshot-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2328;
+        }
+        
+        .screenshot-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: #656d76;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .meta-label {
+            font-weight: 500;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge.success {
+            background: #d4f8d4;
+            color: #1a7f37;
+        }
+        
+        .badge.warning {
+            background: #fff8c5;
+            color: #936d00;
+        }
+        
+        .screenshot-image {
+            width: 100%;
+            display: block;
+            background: #f5f7fa;
+        }
+        
+        .screenshot-caption {
+            padding: 16px 24px;
+            background: #f6f8fa;
+            border-top: 1px solid #e7eaed;
+            font-size: 14px;
+            color: #656d76;
+            font-style: italic;
+        }
+        
+        footer {
+            margin-top: 60px;
+            text-align: center;
+            color: #656d76;
+            font-size: 14px;
+        }
+        
+        .check-icon {
+            color: #1a7f37;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📸 Chrome Web Store Screenshots</h1>
+            <p class="subtitle">Issue/MR Number Pin for GitLab — Store Listing Preview</p>
+            <div class="stats">
+                <div class="stat">
+                    <span>Total:</span>
+                    <span class="value">5 images</span>
+                </div>
+                <div class="stat">
+                    <span>Resolution:</span>
+                    <span class="value">1280×800</span>
+                </div>
+                <div class="stat">
+                    <span>Total Size:</span>
+                    <span class="value">601 KB</span>
+                </div>
+            </div>
+        </header>
+        
+        <div class="screenshots">
+            <!-- 01 -->
+            <div class="screenshot-item">
+                <div class="screenshot-header">
+                    <div class="screenshot-title">01 — Main Panel</div>
+                    <div class="screenshot-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Size:</span>
+                            <span>104 KB</span>
+                        </div>
+                        <span class="badge success">✓ &lt;200KB</span>
+                    </div>
+                </div>
+                <img src="01-main-panel.jpg" alt="Main Panel" class="screenshot-image">
+                <div class="screenshot-caption">
+                    "Quick access from any GitLab page"
+                </div>
+            </div>
+            
+            <!-- 02 -->
+            <div class="screenshot-item">
+                <div class="screenshot-header">
+                    <div class="screenshot-title">02 — State Filter</div>
+                    <div class="screenshot-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Size:</span>
+                            <span>107 KB</span>
+                        </div>
+                        <span class="badge success">✓ &lt;200KB</span>
+                    </div>
+                </div>
+                <img src="02-panel-state-filter.jpg" alt="State Filter" class="screenshot-image">
+                <div class="screenshot-caption">
+                    "Filter by Open / Merged / Closed states"
+                </div>
+            </div>
+            
+            <!-- 03 -->
+            <div class="screenshot-item">
+                <div class="screenshot-header">
+                    <div class="screenshot-title">03 — Search</div>
+                    <div class="screenshot-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Size:</span>
+                            <span>191 KB</span>
+                        </div>
+                        <span class="badge success">✓ &lt;200KB</span>
+                    </div>
+                </div>
+                <img src="03-panel-search.png" alt="Search" class="screenshot-image">
+                <div class="screenshot-caption">
+                    "Search across issues and MRs" — keyword: <code>api</code>
+                </div>
+            </div>
+            
+            <!-- 04 -->
+            <div class="screenshot-item">
+                <div class="screenshot-header">
+                    <div class="screenshot-title">04 — Configuration</div>
+                    <div class="screenshot-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Size:</span>
+                            <span>98 KB</span>
+                        </div>
+                        <span class="badge success">✓ &lt;200KB</span>
+                    </div>
+                </div>
+                <img src="04-options-page.png" alt="Options Page" class="screenshot-image">
+                <div class="screenshot-caption">
+                    "Granular configuration options" — options page, list settings (default filter, remember search, language, search scope)
+                </div>
+            </div>
+            
+            <!-- 05 -->
+            <div class="screenshot-item">
+                <div class="screenshot-header">
+                    <div class="screenshot-title">05 — Persistent Badge</div>
+                    <div class="screenshot-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Size:</span>
+                            <span>103 KB</span>
+                        </div>
+                        <span class="badge success">✓ &lt;200KB</span>
+                    </div>
+                </div>
+                <img src="05-badge-scroll.png" alt="Badge Scroll" class="screenshot-image">
+                <div class="screenshot-caption">
+                    "Persistent badge while scrolling"
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>✓ All screenshots meet Chrome Web Store requirements</p>
+            <p style="margin-top: 8px; font-size: 13px;">Generated: 2026-08-21 | Updated: 2026-09-10 (main bae57ac) | Status: Final — 5 assets, filename matches real bytes</p>
+        </footer>
+    </div>
+</body>
+</html>
