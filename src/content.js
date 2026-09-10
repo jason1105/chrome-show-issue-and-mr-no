@@ -1860,20 +1860,26 @@
       || node.getAttribute('tabindex') !== null;
   }
 
+  // Shared with handleDocumentTabKeydown so the document-level rescue lands on
+  // exactly the same controls the panel trap cycles (single source, no drift).
+  function getPanelFocusable(panel) {
+    return Array.from(panel.querySelectorAll('button, input, [href], [tabindex]'))
+      .filter(isPanelFocusable);
+  }
+
   function handlePanelTabCycle(event) {
     if (!navigation.open) return;
     if (event.key !== 'Tab') return;
     const host = root.document.getElementById(HOST_ID);
     const panel = host?.shadowRoot?.querySelector('[data-open-items-panel]');
     if (!panel || panel.hidden) return;
-    const focusable = Array.from(panel.querySelectorAll('button, input, [href], [tabindex]'))
-      .filter(isPanelFocusable);
+    const focusable = getPanelFocusable(panel);
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     const active = host.shadowRoot.activeElement;
     if (event.shiftKey) {
-      if (active === first || !host.contains(active)) {
+      if (active === first) {
         event.preventDefault();
         last.focus();
       }
@@ -1881,6 +1887,29 @@
       event.preventDefault();
       first.focus();
     }
+  }
+
+  // #41 (reachable): the panel-scoped trap can never see a Tab whose focus
+  // origin lies outside the panel (e.g. <body> after a re-render drops focus),
+  // so the NULL -> drag-handle escape only gets intercepted here at the
+  // document level — the sole cut point reachable from every focus origin. It
+  // rescues only when focus has actually left the widget
+  // (shadowRoot.activeElement === null), leaving hover-open (non-modal) and
+  // the badge's own handle/trigger/copy controls alone.
+  function handleDocumentTabKeydown(event) {
+    if (event.key !== 'Tab') return;
+    const host = root.document.getElementById(HOST_ID);
+    if (!navigation.open || !host) return;
+    const panel = host.shadowRoot?.querySelector('[data-open-items-panel]');
+    if (!panel || panel.hidden) return;
+    // Focus still inside the widget (badge or panel): the panel trap or the
+    // badge's own controls own Tab natively — do not interfere.
+    if (host.shadowRoot.activeElement) return;
+    const focusable = getPanelFocusable(panel);
+    if (!focusable.length) return;
+    event.preventDefault();
+    const target = event.shiftKey ? focusable[focusable.length - 1] : focusable[0];
+    target.focus();
   }
 
   // #11: arrow-key navigation across the open-item result rows (roving
@@ -2128,6 +2157,9 @@
     shadow.addEventListener('focusout', handleNavigationFocusOut);
     root.document.documentElement.append(host);
     root.document.addEventListener('pointerdown', handleDocumentPointerDown);
+    // #41: capture phase so the Tab rescue runs before any page-level handler
+    // and before the event reaches body; removed symmetric in destroy() below.
+    root.document.addEventListener('keydown', handleDocumentTabKeydown, true);
     applyThemeToHost(host);
     applyPosition(host);
     return host;
@@ -2300,6 +2332,9 @@
     navigationEventListeners.length = 0;
     root.document.removeEventListener('DOMContentLoaded', handleDocumentReady);
     root.document.removeEventListener('pointerdown', handleDocumentPointerDown);
+    // capture flag must match the registration exactly, otherwise real
+    // browsers do not match the listener by capture and the remove no-ops.
+    root.document.removeEventListener('keydown', handleDocumentTabKeydown, true);
     root.removeEventListener('resize', handleResize);
     root.chrome?.storage?.onChanged?.removeListener?.(handleStorageLanguageChanged);
     configStore.dispose?.();
