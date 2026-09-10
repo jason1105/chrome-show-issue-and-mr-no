@@ -683,7 +683,9 @@
       }
 
       /* #11 P1 copy-success toast (spec §4): anchored under the copy button
-         like the tooltip, but stacked above it (z-index 2). It is mutually
+         like the tooltip, but stacked above it (z-index 3, higher than the
+         panel header's z-index 2 so the toast stays visible while the panel
+         is open — the #43 follow-up overlap fix). It is mutually
          exclusive with the tooltip while visible — the suppression rules below
          come after the hover/focus reveal so they win at equal specificity.
          Scoped to the direct child span: the button itself carries
@@ -695,7 +697,7 @@
         position: absolute;
         top: calc(100% + 7px);
         right: -5px;
-        z-index: 2;
+        z-index: 3;
         display: flex;
         align-items: center;
         gap: 5px;

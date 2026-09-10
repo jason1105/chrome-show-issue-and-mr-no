@@ -3612,7 +3612,7 @@ test('#11 P1 BADGE_CSS carries the empty-state, toast, and reduced-motion rules'
   // on the button ([data-copy-reference][data-copy-toast]) never matches this
   // selector (manager-ruled, #43 regression guard). Layout props live on it.
   assert.match(css, /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[\s\S]*?top:\s*calc\(100% \+ 7px\)/);
-  assert.match(css, /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[\s\S]*?z-index:\s*2/);
+  assert.match(css, /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[\s\S]*?z-index:\s*3/);
   assert.match(css, /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[\s\S]*?background:\s*var\(--pin-surface-pop\)/);
   // A bare selector at the start of a rule (the #43 collision that hid the whole
   // button subtree) must be gone — the toast span is always the direct child.
@@ -3630,6 +3630,29 @@ test('#11 P1 BADGE_CSS carries the empty-state, toast, and reduced-motion rules'
 
   // §5 reduced motion: transforms/transitions killed for the animated pops.
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\[data-copy-tooltip\][\s\S]*?\[data-copy-toast\][\s\S]*?transition:\s*none[\s\S]*?transform:\s*none/);
+});
+
+test('#43 follow-up: toast z-index strictly beats the panel header z-index (#44 guard)', async () => {
+  // Root cause of the panel-open invisibility: the toast and the sticky panel
+  // header both lived at z-index 2 inside the same shadow root, and the header
+  // (appended later in content.js) won the paint order. Static guard: parse the
+  // two rules and compare their z-index values numerically so any future
+  // regression back to `>= header` fails here rather than on a browser.
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/16');
+  await harness.flushMicrotasks();
+  const css = getBadge(harness.document).style.textContent;
+
+  const toastMatch = css.match(
+    /\[data-copy-reference\]\s*>\s*\[data-copy-toast\]\s*\{[^}]*?z-index:\s*(\d+)/);
+  const headerMatch = css.match(
+    /\[data-open-items-header\]\s*\{[^}]*?z-index:\s*(\d+)/);
+  assert.ok(toastMatch, 'toast base rule must carry a numeric z-index');
+  assert.ok(headerMatch, 'panel header rule must carry a numeric z-index');
+
+  const toastZ = Number(toastMatch[1]);
+  const headerZ = Number(headerMatch[1]);
+  assert.ok(toastZ > headerZ,
+    `toast z-index (${toastZ}) must be strictly greater than the panel header z-index (${headerZ})`);
 });
 
 test('panel is announced as a labelled dialog and result rows use a roving tabindex', async () => {
