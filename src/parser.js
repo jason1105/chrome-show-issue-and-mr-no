@@ -87,10 +87,22 @@
     'public',
   ]);
 
+  // GitLab routes everything after the project path behind a "/-/" separator
+  // (/-/tree/main, /-/commits/main, ...). The project path is therefore every
+  // segment before the first "-"; without a separator we fall back to the
+  // legacy group/project prefix. Mirrors parseGitLabReference's project end.
+  function resolveProjectPathSegments(segments) {
+    const separatorIndex = segments.indexOf('-');
+    if (separatorIndex >= 0) {
+      return separatorIndex >= 2 ? segments.slice(0, separatorIndex) : null;
+    }
+    return segments.slice(0, 2);
+  }
+
   // Recognizes any GitLab project page URL (repository tree, CI/CD, wiki, ...)
   // and returns the project coordinates. Deliberately decoupled from
-  // parseGitLabReference: it only needs the "group/project" prefix, which is
-  // always the first two path segments.
+  // parseGitLabReference: it only needs the project path, which ends at the
+  // "/-/" route separator when one is present.
   function parseGitLabProjectPage(urlLike) {
     let url;
 
@@ -109,16 +121,19 @@
 
     if (RESERVED_ROOT_SEGMENTS.has(segments[0])) return null;
 
-    let projectSegments;
+    const projectSegments = resolveProjectPathSegments(segments);
+    if (!projectSegments) return null;
+
+    let decoded;
     try {
-      projectSegments = segments.slice(0, 2).map(decodeURIComponent);
+      decoded = projectSegments.map(decodeURIComponent);
     } catch {
       return null;
     }
 
     return {
       origin: url.origin,
-      projectPath: projectSegments.join('/'),
+      projectPath: decoded.join('/'),
     };
   }
 

@@ -143,10 +143,57 @@ test('parseGitLabProjectPage recognizes repository pages by group/project prefix
     parseGitLabProjectPage('http://git.internal:8080/acme/platform/-/pipelines'),
     { origin: 'http://git.internal:8080', projectPath: 'acme/platform' },
   );
-  // Deeply nested groups still resolve to the first two segments.
+  // Nested subgroup pages resolve to the full path before /-/.
   assert.deepEqual(
     parseGitLabProjectPage('https://gitlab.com/acme/subgroup/platform/-/wikis/home'),
-    { origin: 'https://gitlab.com', projectPath: 'acme/subgroup' },
+    { origin: 'https://gitlab.com', projectPath: 'acme/subgroup/platform' },
+  );
+});
+
+test('parseGitLabProjectPage resolves nested subgroup paths behind the /-/ separator', () => {
+  // Regression scene from the field report: 4-segment nested subgroup commits page.
+  assert.deepEqual(
+    parseGitLabProjectPage(
+      'http://git.tsintergy.com:8070/architecture-group/agent/tsie-airs/tsie-airs-backend/-/commits/main',
+    ),
+    {
+      origin: 'http://git.tsintergy.com:8070',
+      projectPath: 'architecture-group/agent/tsie-airs/tsie-airs-backend',
+    },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/a/b/c/d/-/tree/main'),
+    { origin: 'https://gitlab.com', projectPath: 'a/b/c/d' },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/a/b/c/d/-/pipelines'),
+    { origin: 'https://gitlab.com', projectPath: 'a/b/c/d' },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/a/b/c/d/-/issues'),
+    { origin: 'https://gitlab.com', projectPath: 'a/b/c/d' },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/a/b/c/d/-/issues/5'),
+    { origin: 'https://gitlab.com', projectPath: 'a/b/c/d' },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/group/sub%20group/platform/-/tree/main'),
+    { origin: 'https://gitlab.com', projectPath: 'group/sub group/platform' },
+  );
+  // The first "-" segment is the route separator; later ones belong to the route.
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/a/b/c/d/-/tree/main/dir/-/file'),
+    { origin: 'https://gitlab.com', projectPath: 'a/b/c/d' },
+  );
+});
+
+test('parseGitLabProjectPage keeps the two-segment fallback without a /-/ separator', () => {
+  // Known limitation (issue #47): a project homepage under a nested subgroup
+  // is indistinguishable from a group page, so the legacy prefix stays.
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/a/b/c/d'),
+    { origin: 'https://gitlab.com', projectPath: 'a/b' },
   );
 });
 
@@ -161,6 +208,8 @@ test('parseGitLabProjectPage rejects non-project and malformed URLs', () => {
     'https://gitlab.com/explore/projects',
     'https://gitlab.com/admin',
     'https://gitlab.com/public/acme',
+    'https://gitlab.com/foo/-/tree', // separator with fewer than 2 project segments
+    'https://gitlab.com/-/tree', // reserved root segment
     'https://git.example.test/platform/%E0%A4%A/repository',
     'ftp://gitlab.com/acme/platform',
     'not a URL',
