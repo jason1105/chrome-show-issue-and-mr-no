@@ -786,7 +786,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     assert.equal(initial.triggerHit, true);
     assert.equal(initial.buttonHit, true);
     assert.equal(initial.ariaLabel, '复制 #123');
-    assert.equal(initial.copyText, '#123');
+    assert.equal(initial.copyText, 'Issue #123');
     assert.ok(Math.abs(initial.top - 8) < 0.5, `expected top 8, got ${initial.top}`);
     assert.deepEqual(requestCounts, { issues: 0, mergeRequests: 0 });
 
@@ -1362,7 +1362,7 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
       };
     })()`, 'Merge Request badge after SPA navigation');
     assert.equal(mergeRequest.text, 'MR !456');
-    assert.equal(mergeRequest.copyText, '!456');
+    assert.equal(mergeRequest.copyText, 'MR !456');
     assert.equal(mergeRequest.ariaLabel, '复制 !456');
     assert.equal(mergeRequest.tooltip, '复制 !456');
     assert.equal(await cdpClient.evaluate(
