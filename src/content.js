@@ -134,8 +134,14 @@
   function formatCopyText(reference) {
     if (!reference.kind) return '';
     return reference.kind === 'issue'
-      ? `#${reference.iid}`
-      : `!${reference.iid}`;
+      ? `Issue #${reference.iid}`
+      : `MR !${reference.iid}`;
+  }
+
+  // #49: data-copy-text (and the clipboard) carry the type prefix, while the
+  // default tooltip/aria-label keep the bare "#5"/"!4" form (issue #49 P4).
+  function copyDisplayText(copyText) {
+    return copyText.replace(/^(?:Issue |MR )/, '');
   }
 
   function getProjectKey(reference) {
@@ -1023,7 +1029,7 @@
     copyGeneration = generation;
     clearFeedbackTimer();
     clearCopyToast(host);
-    setDefaultFeedback(host, text);
+    setDefaultFeedback(host, copyDisplayText(text));
 
     const isCurrent = () => (
       !destroyed
@@ -1032,7 +1038,7 @@
     );
     const copied = await copyText(text, isCurrent);
     if (!isCurrent()) return;
-    setFeedback(host, copied ? 'success' : 'error', text, generation);
+    setFeedback(host, copied ? 'success' : 'error', copyDisplayText(text), generation);
   }
 
 
@@ -2230,13 +2236,13 @@
         t('triggerAriaLabelProject', [reference.projectPath]),
       );
       if (copyText) {
-        button.setAttribute('aria-label', t('copyDefault', [copyText]));
+        button.setAttribute('aria-label', t('copyDefault', [copyDisplayText(copyText)]));
         button.setAttribute('data-copy-text', copyText);
       } else {
         button.removeAttribute('aria-label');
         button.removeAttribute('data-copy-text');
       }
-      if (resetCopy) setDefaultFeedback(host, copyText);
+      if (resetCopy) setDefaultFeedback(host, copyDisplayText(copyText));
       renderNavigationPanel(host, { rebuildStatic: rerenderPanel });
     }
     applyPosition(host);
@@ -2462,7 +2468,7 @@
     if (!button || button.getAttribute('data-copy-state') !== 'default') return;
     const copyText = button.getAttribute('data-copy-text');
     if (!copyText) return;
-    tooltip.textContent = t('copyDefault', [copyText]);
+    tooltip.textContent = t('copyDefault', [copyDisplayText(copyText)]);
   }
 
   function loadStoredLanguage() {

@@ -699,7 +699,7 @@ test('renders a segmented Issue reference with an accessible copy button', () =>
   assert.equal(rendered.button.tagName, 'BUTTON');
   assert.equal(rendered.button.getAttribute('type'), 'button');
   assert.equal(rendered.button.getAttribute('aria-label'), 'Copy #123');
-  assert.equal(rendered.button.getAttribute('data-copy-text'), '#123');
+  assert.equal(rendered.button.getAttribute('data-copy-text'), 'Issue #123');
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'default');
   assert.equal(rendered.tooltip.textContent, 'Copy #123');
   assert.equal(rendered.button.children.filter((node) => node.tagName === 'SVG').length, 1);
@@ -965,7 +965,7 @@ test('copies an Issue reference and restores the default state after 1500ms', as
   rendered.button.dispatchEvent({ type: 'click' });
   await harness.flushMicrotasks();
 
-  assert.deepEqual(harness.clipboardWrites, ['#15']);
+  assert.deepEqual(harness.clipboardWrites, ['Issue #15']);
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'success');
   assert.equal(rendered.tooltip.textContent, 'Copied');
   assert.equal(rendered.button.children.filter((node) => node.tagName === 'SVG').length, 1);
@@ -993,7 +993,7 @@ test('copies an MR reference using the exclamation-mark format', async () => {
   rendered.button.dispatchEvent({ type: 'click' });
   await harness.flushMicrotasks();
 
-  assert.deepEqual(harness.clipboardWrites, ['!14']);
+  assert.deepEqual(harness.clipboardWrites, ['MR !14']);
   assert.equal(rendered.label.textContent, 'MR !14');
   assert.equal(rendered.button.getAttribute('aria-label'), 'Copy !14');
   assert.equal(rendered.tooltip.textContent, 'Copied');
@@ -1022,7 +1022,7 @@ test('falls back after Clipboard API rejection', async () => {
   rendered.button.dispatchEvent({ type: 'click' });
   await harness.flushMicrotasks();
 
-  assert.deepEqual(harness.clipboardWrites, ['#9']);
+  assert.deepEqual(harness.clipboardWrites, ['Issue #9']);
   assert.deepEqual(harness.execCommandCalls, ['copy']);
   assert.equal(rendered.button.getAttribute('data-copy-state'), 'success');
 });
@@ -1076,7 +1076,7 @@ test('#11 P1 copy-success toast shows in place, dwells 1800ms, then fades over 1
   rendered.button.dispatchEvent({ type: 'click' });
   await harness.flushMicrotasks();
 
-  assert.deepEqual(harness.clipboardWrites, ['#15']);
+  assert.deepEqual(harness.clipboardWrites, ['Issue #15']);
   assert.equal(rendered.button.getAttribute('data-copy-toast'), 'on');
   assert.equal(rendered.toast.getAttribute('aria-hidden'), 'true');
   assert.equal(rendered.toastLabel.textContent, 'Copied');
@@ -1168,7 +1168,7 @@ test('updates the reference and clears feedback after SPA navigation', async () 
   const mergeRequest = getBadge(harness.document);
 
   assert.equal(mergeRequest.label.textContent, 'MR !456');
-  assert.equal(mergeRequest.button.getAttribute('data-copy-text'), '!456');
+  assert.equal(mergeRequest.button.getAttribute('data-copy-text'), 'MR !456');
   assert.equal(mergeRequest.button.getAttribute('aria-label'), 'Copy !456');
   assert.equal(mergeRequest.button.getAttribute('data-copy-state'), 'default');
   assert.equal(mergeRequest.tooltip.textContent, 'Copy !456');
@@ -1189,7 +1189,7 @@ test('responds to glr:navigate dispatched on window (MAIN-world hook channel)', 
 
   const mergeRequest = getBadge(harness.document);
   assert.equal(mergeRequest.label.textContent, 'MR !9');
-  assert.equal(mergeRequest.button.getAttribute('data-copy-text'), '!9');
+  assert.equal(mergeRequest.button.getAttribute('data-copy-text'), 'MR !9');
 });
 
 test('ignores stale copy results after SPA navigation', async () => {
@@ -2255,7 +2255,7 @@ test('configuration load failures keep the reference control available', async (
   await harness.flushMicrotasks();
   const rendered = getBadge(harness.document);
   assert.equal(rendered.label.textContent, 'Issue #15');
-  assert.equal(rendered.button.getAttribute('data-copy-text'), '#15');
+  assert.equal(rendered.button.getAttribute('data-copy-text'), 'Issue #15');
 });
 
 test('disables touch dragging and uses the configured keyboard step', async () => {
@@ -3324,7 +3324,7 @@ test('full-repo mode transitions between project and detail pages within one pro
 
   const detail = getBadge(harness.document);
   assert.equal(renderedText(detail.label), 'Issue #7');
-  assert.equal(detail.button.getAttribute('data-copy-text'), '#7');
+  assert.equal(detail.button.getAttribute('data-copy-text'), 'Issue #7');
 
   harness.location.href = 'https://gitlab.com/acme/platform/-/pipelines';
   harness.dispatchWindow('popstate');
