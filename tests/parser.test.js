@@ -188,12 +188,23 @@ test('parseGitLabProjectPage resolves nested subgroup paths behind the /-/ separ
   );
 });
 
-test('parseGitLabProjectPage keeps the two-segment fallback without a /-/ separator', () => {
-  // Known limitation (issue #47): a project homepage under a nested subgroup
-  // is indistinguishable from a group page, so the legacy prefix stays.
+test('parseGitLabProjectPage resolves the full nested path without a /-/ separator', () => {
+  // Issue #53: modern GitLab group routes always carry the /groups/ prefix
+  // (a reserved root segment), so a prefix-less path without a /-/ separator
+  // can only be a project (or its 302 predecessor). Resolve the full segment
+  // chain instead of the legacy two-segment prefix.
   assert.deepEqual(
     parseGitLabProjectPage('https://gitlab.com/a/b/c/d'),
-    { origin: 'https://gitlab.com', projectPath: 'a/b' },
+    { origin: 'https://gitlab.com', projectPath: 'a/b/c/d' },
+  );
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/a/b/c'),
+    { origin: 'https://gitlab.com', projectPath: 'a/b/c' },
+  );
+  // Two-segment homepages are unaffected by the change.
+  assert.deepEqual(
+    parseGitLabProjectPage('https://gitlab.com/acme/platform'),
+    { origin: 'https://gitlab.com', projectPath: 'acme/platform' },
   );
 });
 
