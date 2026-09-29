@@ -89,14 +89,17 @@
 
   // GitLab routes everything after the project path behind a "/-/" separator
   // (/-/tree/main, /-/commits/main, ...). The project path is therefore every
-  // segment before the first "-"; without a separator we fall back to the
-  // legacy group/project prefix. Mirrors parseGitLabReference's project end.
+  // segment before the first "-". Without a separator the URL can only be a
+  // project homepage (or its 302 predecessor): modern GitLab group routes
+  // always carry the reserved "/groups/" prefix, so any prefix-less path here
+  // is a project's full nested namespace. Mirrors parseGitLabReference's
+  // project end.
   function resolveProjectPathSegments(segments) {
     const separatorIndex = segments.indexOf('-');
     if (separatorIndex >= 0) {
       return separatorIndex >= 2 ? segments.slice(0, separatorIndex) : null;
     }
-    return segments.slice(0, 2);
+    return segments;
   }
 
   // Recognizes any GitLab project page URL (repository tree, CI/CD, wiki, ...)
