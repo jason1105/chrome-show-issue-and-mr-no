@@ -2048,6 +2048,34 @@ test('keeps search, filter, panel state, and refresh focus during a manual refre
   assert.equal(rendered.panel.querySelector('[data-open-item]').getAttribute('data-iid'), '9');
 });
 
+test('keeps the refresh button enabled while loading so focus is not dropped', async () => {
+  // #55: disabling the refresh button while it is focused drops focus to the
+  // page; the shadow-root focusout handler then closes the panel mid-refresh.
+  // The button must stay enabled (aria-busy only) and keep focus.
+  const issueRefresh = deferred();
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
+    fetchResults: [
+      jsonResponse([{ iid: 15, title: 'Release issue' }]),
+      jsonResponse([{ iid: 8, title: 'Release MR' }]),
+      issueRefresh,
+      jsonResponse([]),
+    ],
+  });
+  const rendered = await openAndLoad(harness);
+  rendered.refresh.focus();
+  rendered.refresh.dispatchEvent({ type: 'click' });
+  await harness.flushMicrotasks();
+
+  assert.equal(rendered.panel.hidden, false);
+  assert.equal(rendered.refresh.getAttribute('aria-busy'), 'true');
+  assert.equal(rendered.refresh.getAttribute('disabled'), null);
+  assert.equal(rendered.host.shadowRoot.activeElement, rendered.refresh);
+
+  issueRefresh.resolve(jsonResponse([{ iid: 16, title: 'New issue' }]));
+  await harness.flushMicrotasks();
+  assert.equal(getBadge(harness.document).refresh.getAttribute('aria-busy'), 'false');
+});
+
 test('remembers search state across content contexts when enabled by default', async () => {
   const first = createHarness('https://gitlab.com/acme/platform/-/issues/15', {
     fetchResults: [jsonResponse([]), jsonResponse([])],

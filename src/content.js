@@ -1480,12 +1480,11 @@
     } else {
       existingLastRefresh?.remove();
     }
+    // #55: never disable the refresh button — disabling a focused control
+    // drops focus to the body, the shadow-root focusout handler then reads it
+    // as leaving the panel and closes it mid-refresh. aria-busy plus the
+    // `if (!navigation.loading)` guard in handleRefresh is enough.
     refresh.setAttribute('aria-busy', navigation.loading ? 'true' : 'false');
-    if (navigation.loading) {
-      refresh.setAttribute('disabled', '');
-    } else {
-      refresh.removeAttribute('disabled');
-    }
     if (search.value !== navigation.query) search.value = navigation.query;
     for (const filter of panel.querySelectorAll('[data-open-items-filter]')) {
       const kind = filter.getAttribute('data-open-items-filter');
