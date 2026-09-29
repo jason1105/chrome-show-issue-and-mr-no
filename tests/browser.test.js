@@ -991,18 +991,15 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
     await cdpClient.evaluate(`document.querySelector('#gitlab-reference-badge-host')
       .shadowRoot.querySelector('[data-refresh-open-items]').focus()`);
     await clickAt(cdpClient, openItems.refreshCenterX, openItems.refreshCenterY);
-    // While loading, the refresh button is disabled; a focused-then-disabled
-    // control drops focus and the panel may close via focusout. Re-open via
-    // keyboard focus each poll (single focus() can be dropped, same headful
-    // flakiness class as hover), and hover the trigger to keep it open.
+    // #55: the refresh button is no longer disabled while loading, so focus
+    // stays on it and the panel must not close mid-refresh. Hover the button
+    // being clicked (the pointer is already there after clickAt).
     const refreshedSearch = await waitForValueWithOpenAction(cdpClient,
       `(() => {
         const shadow = document.querySelector('#gitlab-reference-badge-host')?.shadowRoot;
-        const trigger = shadow?.querySelector('[data-reference-trigger]');
-        const panel = shadow?.querySelector('[data-open-items-panel]');
-        if (!trigger) return null;
-        if (panel?.hidden) trigger.focus();
-        const rect = trigger.getBoundingClientRect();
+        const refresh = shadow?.querySelector('[data-refresh-open-items]');
+        if (!refresh) return null;
+        const rect = refresh.getBoundingClientRect();
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       })()`,
       `(() => {
@@ -1023,16 +1020,16 @@ test('verifies navigation, copy, SPA behavior, and persisted extension settings'
           refreshFocused: shadow.activeElement === refresh,
         };
       })()`, 'refreshed filtered Open items list');
-    // Note: refreshFocused was historically asserted as true, but while
-    // loading the refresh button becomes disabled, which drops focus before
-    // the refreshed content renders (pre-existing content.js behaviour,
-    // untouched by Issue #8).
+    // #55: focus must remain on the refresh button through the reload (it is
+    // never disabled), so the panel stays open with the refreshed content.
     assert.deepEqual({
       query: refreshedSearch.query,
       activeFilter: refreshedSearch.activeFilter,
+      refreshFocused: refreshedSearch.refreshFocused,
     }, {
       query: 'mr',
       activeFilter: 'true',
+      refreshFocused: true,
     });
     assert.deepEqual(requestCounts, { issues: 2, mergeRequests: 2 });
 
