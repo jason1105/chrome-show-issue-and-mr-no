@@ -1632,7 +1632,14 @@ test('searches exact references and case-insensitive title substrings locally', 
   );
 
   rendered = searchOpenItems(harness, '12');
-  assert.equal(rendered.panel.querySelectorAll('[data-open-item]').length, 2);
+  // Bare numbers match by iid prefix (issue #57): "12" now also hits 123.
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['issue', '12'], ['issue', '123'], ['merge-request', '12']],
+  );
 
   rendered.search.focus();
   rendered.search.value = '  RELEASE  ';
@@ -1700,6 +1707,95 @@ test('restricts bare-number search to exact iid in number scope', async () => {
       row.getAttribute('data-iid'),
     ]),
     [['issue', '8']],
+  );
+});
+
+test('matches bare-number search by iid prefix (issue #57)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/6', {
+    fetchResults: [
+      jsonResponse([
+        { iid: 6, title: 'Root fix' },
+        { iid: 66, title: 'Nested subgroup paths' },
+        { iid: 67, title: 'Search prefix' },
+        { iid: 45, title: 'Unrelated work' },
+      ]),
+      jsonResponse([
+        { iid: 45, title: 'Copy prefix' },
+      ]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  const rendered = searchOpenItems(harness, '6');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['issue', '6'], ['issue', '66'], ['issue', '67']],
+  );
+
+  const exact = searchOpenItems(harness, '66');
+  assert.deepEqual(
+    exact.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['66'],
+  );
+
+  const nonMatchingDigit = searchOpenItems(harness, '7');
+  assert.deepEqual(
+    nonMatchingDigit.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    [],
+  );
+
+  const reference = searchOpenItems(harness, '#6');
+  assert.deepEqual(
+    reference.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['6'],
+  );
+});
+
+test('matches bare-number search by iid prefix in number scope (issue #57)', async () => {
+  const harness = createHarness('https://gitlab.com/acme/platform/-/issues/6', {
+    storageData: {
+      [CONFIG_STORAGE_KEY]: {
+        version: 2,
+        user: { searchScope: 'number' },
+      },
+    },
+    fetchResults: [
+      jsonResponse([
+        { iid: 6, title: 'Root fix' },
+        { iid: 66, title: 'Nested subgroup paths' },
+      ]),
+      jsonResponse([
+        { iid: 45, title: 'Copy prefix' },
+      ]),
+    ],
+  });
+  await openAndLoad(harness);
+
+  let rendered = searchOpenItems(harness, '6');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['issue', '6'], ['issue', '66']],
+  );
+
+  rendered = searchOpenItems(harness, '4');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => [
+      row.getAttribute('data-kind'),
+      row.getAttribute('data-iid'),
+    ]),
+    [['merge-request', '45']],
+  );
+
+  rendered = searchOpenItems(harness, '!45');
+  assert.deepEqual(
+    rendered.panel.querySelectorAll('[data-open-item]').map((row) => row.getAttribute('data-iid')),
+    ['45'],
   );
 });
 

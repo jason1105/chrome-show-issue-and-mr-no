@@ -210,8 +210,10 @@
     }
 
     if (/^[1-9][0-9]*$/.test(normalized)) {
-      if (activeConfig.searchScope === 'number') return item.iid === normalized;
-      return item.iid === normalized
+      // Bare numbers match by iid prefix (e.g. "6" matches 6, 66, 67);
+      // startsWith also covers the exact match. Explicit #N/!N stay exact above.
+      if (activeConfig.searchScope === 'number') return item.iid.startsWith(normalized);
+      return item.iid.startsWith(normalized)
         || item.title.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());
     }
     return item.title.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());

@@ -61,10 +61,10 @@
   },
   "searchScopeNumber": {
     "message": "Number only",
-    "description": "Search scope option: match exact number only."
+    "description": "Search scope option: match number prefixes only."
   },
   "searchScopeHint": {
-    "message": "For a bare number: by default it matches both titles containing that number and items with that exact number; choosing \"Number only\" matches the exact number only.",
+    "message": "For a bare number: it matches items whose number starts with it (e.g. 6 matches 6 and 66); by default titles containing that number also match, while \"Number only\" matches numbers only.",
     "description": "Hint explaining bare-number search scope behavior."
   },
   "language": {
